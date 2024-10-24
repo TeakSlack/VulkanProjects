@@ -82,3 +82,6 @@ class SetupVulkan:
         with open(shellPath, 'a') as f:
             f.write('source ' + basePath + f"/{cls.installVulkanVersion}/setup-env.sh")
             f.close()
+        
+        print("Please re-open your shell and re-run this script after installation.")
+        exit()

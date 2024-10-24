@@ -14,7 +14,7 @@ project "HelloVulkan"
         includedirs 
         {
             "%{IncludeDir.VulkanSDK}",
-            "%{IncludeDir.spdlog}"
+            "%{IncludeDir.spdlog}",
         }
 
         libdirs 
