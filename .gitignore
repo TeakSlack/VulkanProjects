@@ -5,6 +5,7 @@ vendor/VulkanSDK
 **.sln
 **.vcxproj.user
 .vs
+.vscode
 bin
 bin-int
 **/Makefile
