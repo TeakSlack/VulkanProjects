@@ -2,6 +2,10 @@
 
 ## Building
 
+### Requirements
+
+To build this project, users will need Python <=3.3 installed. Windows users will need Visual Studio 2022 (v143) and Linux users will need `g++` and `make`. Additionally, users will need `premake5` and the Vulkan SDK, however if these aren't installed the setup scripts will install them for you.
+
 To setup the platform-specific projects for Vulkan Projects, navigate to the `scripts` directory and run either `Setup-Win.bat` on Windows or `Setup-Linux.sh` on Linux distros. This will install all of the necessary packages and modules to generate the required projects for either Windows or Linux. Either a Visual Studio 2022 solution or Makefile will then be present when the setup is finished.
 
 For Windows starting in the project's base directory:

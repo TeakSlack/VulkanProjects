@@ -1,7 +1,6 @@
 import os
 import platform
 import sys
-import subprocess
 
 import FileUtil
 
@@ -12,7 +11,7 @@ class SetupVulkan:
     vulkanUrls = {
         "Windows": f"https://sdk.lunarg.com/sdk/download/{installVulkanVersion}/windows/VulkanSDK-{installVulkanVersion}-Installer.exe",
         "Linux": f"https://sdk.lunarg.com/sdk/download/{installVulkanVersion}/linux/vulkansdk-linux-x86_64-{installVulkanVersion}.tar.xz"
-    }
+    } # Platform-specific Vulkan SDK download url
 
     @classmethod
     def Validate(cls):
@@ -20,7 +19,7 @@ class SetupVulkan:
     
     @classmethod
     def ValidateVulkan(cls):
-        vulkanSdk = os.environ.get('VULKAN_SDK')
+        vulkanSdk = os.environ.get('VULKAN_SDK') # Checks if VULKAN_SDK is in PATH
         if vulkanSdk is None:
             print("Vulkan SDK is not installed!")
             cls.InstallVulkan()
@@ -33,6 +32,7 @@ class SetupVulkan:
     
     @classmethod
     def InstallVulkan(cls):
+        # Prompts user for permission to download Vulkan SDK
         hasPermission = False
         while not hasPermission:
             reply = str(input(f"Would you like to install Vulkan {cls.installVulkanVersion} (this may take a while)? [Y/n]: ")).lower().strip()[:1]
@@ -51,7 +51,7 @@ class SetupVulkan:
         FileUtil.DownloadFile(url, vulkanPath)
 
         if platform.system() == "Windows":
-            os.startfile(os.path.abspath(vulkanPath))
+            os.startfile(os.path.abspath(vulkanPath)) # Runs Vulkan SDK installer
             print("Re-run this script after installation.")
             sys.exit(0)
         elif platform.system() == "Linux":
@@ -60,6 +60,7 @@ class SetupVulkan:
 
     @classmethod 
     def AddVulkanPath(cls, vulkanPath): # only supports bash or zsh
+        # Prompts user for permission to add Vulkan SDK to PATH
         hasPermission = False
         while not hasPermission:
             reply = str(input(f"Would you like to add Vulkan to your shells PATH? [Y/n]: ")).lower().strip()[:1]
@@ -76,6 +77,7 @@ class SetupVulkan:
         elif 'zsh' in shell:
             shellConfig = '.zshrc'
         
+        # Adds setup-env.sh to host user's shell config via the source command
         shellPath = os.path.expanduser('~/' + shellConfig)
         with open(shellPath, 'a') as f:
             f.write('source ' + basePath + f"/{cls.installVulkanVersion}/setup-env.sh")

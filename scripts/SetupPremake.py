@@ -15,7 +15,7 @@ class SetupPremake:
     premakeExecutables = {
         "Windows": "premake5.exe",
         "Linux": "premake5"
-    }
+    } # Platform-specific premake binary
 
     @classmethod
     def Validate(cls):
@@ -28,13 +28,14 @@ class SetupPremake:
     
     @classmethod
     def IsPremakeInstalled(cls):
-        premakeExecutable = Path(f"{cls.premakeDirectory}/{cls.premakeExecutables[platform.system()]}")
+        premakeExecutable = Path(f"{cls.premakeDirectory}/{cls.premakeExecutables[platform.system()]}") # Creates path to where premake5 binary should be
         if(not premakeExecutable.exists()):
             return False
         return True
     
     @classmethod
     def InstallPremake(cls):
+        # Prompt user for permission to download premake
         hasPermission = False
         while not hasPermission:
             reply = str(input(f"Would you like to install Premake {cls.premakeVersion}? [Y/n]: ")).lower().strip()[:1]
@@ -42,7 +43,7 @@ class SetupPremake:
                 return False
             hasPermission = (reply == 'y' or reply == '')
 
-        url = cls.premakeUrls[platform.system()]
+        url = cls.premakeUrls[platform.system()] # Gets platform-specific premake download url
         premakePath = f"{cls.premakeDirectory}/premake-{cls.premakeVersion}-{platform.system().lower()}"
 
         if platform.system() == "Windows":
@@ -51,11 +52,14 @@ class SetupPremake:
             premakePath += ".tar.gz"
 
         FileUtil.DownloadFile(url, premakePath)
+
+        # Un-zips or un-tars file appropriately based upon the file extension
         if Path(premakePath).suffix == ".zip":
             FileUtil.ZipFile(premakePath)
         elif Path(premakePath).suffix == ".gz":
             FileUtil.TarFile(premakePath)
 
+        # Gets premake license to avoid legal issues!
         FileUtil.DownloadFile(cls.premakeLicenseUrl, f"{cls.premakeDirectory}/LICENSE.txt")
         return True
 
