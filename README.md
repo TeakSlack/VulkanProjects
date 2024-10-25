@@ -6,7 +6,7 @@
 
 To build this project, users will need Python <=3.3 installed. Windows users will need Visual Studio 2022 (v143) and Linux users will need `g++` and `make`. Additionally, users will need `premake5` and the Vulkan SDK, however if these aren't installed the setup scripts will install them for you.
 
-To setup the platform-specific projects for Vulkan Projects, navigate to the `scripts` directory and run either `Setup-Win.bat` on Windows or `Setup-Linux.sh` on Linux distros. This will install all of the necessary packages and modules to generate the required projects for either Windows or Linux. Either a Visual Studio 2022 solution or Makefile will then be present when the setup is finished.
+To setup the platform-specific projects for Vulkan Projects, navigate to the `scripts` directory and run either `Setup-Win.bat` on Windows or `Setup-Linux.sh` on Linux distros. This will install all of the necessary packages and modules to generate the required projects for either Windows or Linux. Either a Visual Studio 2022 solution or Makefile will then be present when the setup is finished. After the setup has been ran once, users can then use either `GenProjects-Win.bat` or `GenProjects-Linux.sh` to regenerate the projects.
 
 For Windows starting in the project's base directory:
 
@@ -31,7 +31,7 @@ sudo apt install python3-requests
 sudo apt install python3-tqdm
 ```
 
-Additionally, if the Vulkan SDK is not already present on the system, the setup script will prompt you to install it. On Linux systems, the Vulkan SDK is installed to the `./vendor/VulkanSDK` directory and the user's shell configuration file is modified to source the `PATH` to that local installation of the Vulkan SDK. This might not be wanted, as in the future if this project is deleted, the Vulkan SDK will be removed alongside it. To relocate the Vulkan SDK to another safer directory, consult the [Getting Started with the Linux Tarball Vulkan SDK](https://vulkan.lunarg.com/doc/view/1.3.296.0/linux/getting_started.html) guide provided by the Khronos Group. Specifically, the *"Copying SDK Files to System Directories"* and accompanying sections may be useful.
+Additionally, if the Vulkan SDK is not already present on the system, the setup script will prompt you to install it. On Linux systems, the Vulkan SDK is installed to the `./vendor/VulkanSDK` directory but is not sourced into the shell's `PATH`. It is recommended to relocate the Vulkan SDK to a safer directory and have the Vulkan SDK be sourced into the shells `PATH`. Users should consult the [Getting Started with the Linux Tarball Vulkan SDK](https://vulkan.lunarg.com/doc/view/1.3.296.0/linux/getting_started.html) guide provided by the Khronos Group. Specifically, the *"Copying SDK Files to System Directories"* and accompanying sections may prove useful.
 
 ## Running
 

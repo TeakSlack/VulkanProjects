@@ -6,6 +6,7 @@ import subprocess
 from SetupPython import SetupPython
 from SetupPremake import SetupPremake
 from SetupVulkan import SetupVulkan
+from SetupProjectsLinux import SetupProjectsLinux
 
 # Change directory to project root
 os.chdir('../')
@@ -23,4 +24,4 @@ print("Running premake...")
 if platform.system() == "Windows":
     subprocess.call([os.path.abspath('./vendor/premake/bin/premake5.exe'), 'vs2022'])
 elif platform.system() == "Linux":
-    subprocess.call([os.path.abspath('./vendor/premake/bin/premake5'), 'gmake2'])
+    SetupProjectsLinux.Setup()

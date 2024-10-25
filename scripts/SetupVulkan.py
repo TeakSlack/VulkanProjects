@@ -20,6 +20,9 @@ class SetupVulkan:
     @classmethod
     def ValidateVulkan(cls):
         vulkanSdk = os.environ.get('VULKAN_SDK') # Checks if VULKAN_SDK is in PATH
+        vulkanLinuxPath = f"${cls.vulkanDirectory}/${cls.installVulkanVersion}/x86_64" # Checks if Vulkan is installed locally by setup
+        if os.path.isdir(vulkanLinuxPath):
+            vulkanSdk = os.path.abspath(vulkanLinuxPath)
         if vulkanSdk is None:
             print("Vulkan SDK is not installed!")
             cls.InstallVulkan()
@@ -56,32 +59,3 @@ class SetupVulkan:
             sys.exit(0)
         elif platform.system() == "Linux":
             FileUtil.TarFile(vulkanPath, type='xz')
-            cls.AddVulkanPath(vulkanPath)
-
-    @classmethod 
-    def AddVulkanPath(cls, vulkanPath): # only supports bash or zsh
-        # Prompts user for permission to add Vulkan SDK to PATH
-        hasPermission = False
-        while not hasPermission:
-            reply = str(input(f"Would you like to add Vulkan to your shells PATH? [Y/n]: ")).lower().strip()[:1]
-            if reply == 'n':
-                return False
-            hasPermission = (reply == 'y' or reply == '')
-            
-        basePath = os.path.dirname(vulkanPath)
-        basePath = os.path.abspath(basePath)
-
-        shell = os.environ.get('SHELL')
-        if 'bash' in shell:
-            shellConfig = '.bashrc'
-        elif 'zsh' in shell:
-            shellConfig = '.zshrc'
-        
-        # Adds setup-env.sh to host user's shell config via the source command
-        shellPath = os.path.expanduser('~/' + shellConfig)
-        with open(shellPath, 'a') as f:
-            f.write('source ' + basePath + f"/{cls.installVulkanVersion}/setup-env.sh")
-            f.close()
-        
-        print("Please re-open your shell and re-run this script after installation.")
-        exit()
