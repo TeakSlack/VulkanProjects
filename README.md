@@ -1,42 +1,54 @@
 # Vulkan Projects
 
-## Building
+A collection of projects based upon the Khronos Group's Vulkan API. This guide covers the setup, building, and troubleshooting steps for both Windows and Linux.
+## Requirements
+* **Python:** Version 3.3 or higher
+* **Windows:** Visual Studio 2022 (v143)
+* **Linux:** `g++` and `make`
+* **Other Tools:** `premake5` and the Vulkan SDK (auto-installed by setup scripts if missing)
+## Installation
+To set up the project environment, run the appropriate setup script for your operating system:
 
-### Requirements
-
-To build this project, users will need Python <=3.3 installed. Windows users will need Visual Studio 2022 (v143) and Linux users will need `g++` and `make`. Additionally, users will need `premake5` and the Vulkan SDK, however if these aren't installed the setup scripts will install them for you.
-
-To setup the platform-specific projects for Vulkan Projects, navigate to the `scripts` directory and run either `Setup-Win.bat` on Windows or `Setup-Linux.sh` on Linux distros. This will install all of the necessary packages and modules to generate the required projects for either Windows or Linux. Either a Visual Studio 2022 solution or Makefile will then be present when the setup is finished. After the setup has been ran once, users can then use either `GenProjects-Win.bat` or `GenProjects-Linux.sh` to regenerate the projects.
-
-For Windows starting in the project's base directory:
-
+* **Windows:**
 ```bash
 cd scripts
-Setup-Win.bat
+.\Setup-Win.bat
 ```
 
-For Linux starting in the project's base directory:
-
+* **Linux:**
 ```bash
 cd scripts
 ./Setup-Linux.sh
 ```
 
-From here, either Visual Studio 2022 or `make` can be used to generate project binaries which can then be ran on their host operating system. 
+These scripts will install required dependencies and generate project files (Visual Studio solution on Windows or Makefile on Linux). For regenerating project files later, use:
 
-**Important**: The `pip` installation module of the script may not work on Linux. The user can choose to either not install the necessary packages, but will be required to use their system's package manager to install the required packages. For example on Debian based distros, the following may be used to install `tqdm` and `requests`, although only `requests` is required for the setup:
+- **Windows**: `GenProjects-Win.bat`
+- **Linux**: `GenProjects-Linux.sh`
+## Building the Project
+
+After setup, build the project as follows:
+- **Windows**: Open the solution file in Visual Studio 2022 and build.
+- **Linux**: Run `make` in the project directory.
+## Running the Executable
+
+Once built, ensure that your system has the correct GPU drivers:
+
+- **Windows**: Download and install the latest drivers from your GPU vendor.
+- **Linux**: Follow distribution-specific methods to install proprietary drivers if needed.
+
+## Troubleshooting
+
+### Linux Dependency Installation
+
+Some Python dependencies (`tqdm` and `requests`) may require manual installation:
 
 ```bash
-sudo apt install python3-requests
-sudo apt install python3-tqdm
+sudo apt install python3-requests python3-tqdm
 ```
+### Vulkan SDK Setup on Linux
 
-Additionally, if the Vulkan SDK is not already present on the system, the setup script will prompt you to install it. On Linux systems, the Vulkan SDK is installed to the `./vendor/VulkanSDK` directory but is not sourced into the shell's `PATH`. It is recommended to relocate the Vulkan SDK to a safer directory and have the Vulkan SDK be sourced into the shells `PATH`. Users should consult the [Getting Started with the Linux Tarball Vulkan SDK](https://vulkan.lunarg.com/doc/view/1.3.296.0/linux/getting_started.html) guide provided by the Khronos Group. Specifically, the *"Copying SDK Files to System Directories"* and accompanying sections may prove useful.
+If not already installed, the setup script will prompt to download the Vulkan SDK, placing it in `./vendor/VulkanSDK`. This directory is not automatically added to `PATH`. For best practices, refer to the [Khronos Group Linux setup guide](https://vulkan.lunarg.com/doc/view/1.3.296.0/linux/getting_started.html) for detailed instructions.
+## License
 
-## Running
-
-While the integrated setup scripts provide everything necessary to build the project for a user's system, it does not include everything required to run the output executables. 
-
-For Windows users, they should consult their system GPU vendor's website for appropriate driver downloads. The process is rather streamlined and shouldn't take long.
-
-For Linux users, the same steps should be followed although it may be more in-depth due to complexities with proprietary drivers not being made publicly available. 
+This project is licensed under the MIT License. See the LICENSE file for details.
