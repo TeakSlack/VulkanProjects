@@ -9,3 +9,4 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 group "Projects"
     include "HelloVulkan"
+    include "Triangle"
