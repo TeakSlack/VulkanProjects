@@ -13,16 +13,16 @@ namespace Vulkan
 	const bool ENABLE_VALIDATION_LAYERS = true;
 #endif
 
-	std::vector<const char*> GetRequiredExtentions()
+	std::vector<const char*> GetRequiredExtensions()
 	{
-		std::vector<const char*> extentions;
+		std::vector<const char*> extensions;
 
 		if (ENABLE_VALIDATION_LAYERS)
 		{
-			extentions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME); // VK_EXT_debug_utils
+			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME); // VK_EXT_debug_utils
 		}
 
-		return extentions;
+		return extensions;
 	}
 
 	bool CheckValidationLayerSupport()
@@ -144,10 +144,10 @@ namespace Vulkan
 		// Enumerates available extensions
 		std::vector<vk::ExtensionProperties> instanceExtensions = vk::enumerateInstanceExtensionProperties();
 
-		// Enable the requested extentions
-		auto extentions = GetRequiredExtentions();
-		createInfo.enabledExtensionCount = extentions.size();
-		createInfo.ppEnabledExtensionNames = extentions.data();
+		// Enable the requested extensions
+		auto extensions = GetRequiredExtensions();
+		createInfo.enabledExtensionCount = extensions.size();
+		createInfo.ppEnabledExtensionNames = extensions.data();
 
 		instance = vk::createInstance(createInfo);
 	}

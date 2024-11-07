@@ -2,7 +2,7 @@
 // Hello Vulkan
 // 
 // Initializes the Vulkan API via creation of an
-// instance, enumerates instance layers and extentions,
+// instance, enumerates instance layers and extensions,
 // enables certain validation layers in debug mode for
 // safety, then cleans up Vulkan and quits.
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
@@ -32,16 +32,16 @@ const bool ENABLE_VALIDATION_LAYERS = true;
 
 auto logger = spdlog::stdout_color_mt("logger");
 
-std::vector<const char*> GetRequiredExtentions()
+std::vector<const char*> GetRequiredExtensions()
 {
-	std::vector<const char*> extentions;
+	std::vector<const char*> extensions;
 
 	if (ENABLE_VALIDATION_LAYERS)
 	{
-		extentions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME); // VK_EXT_debug_utils
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME); // VK_EXT_debug_utils
 	}
 
-	return extentions;
+	return extensions;
 }
 
 bool CheckValidationLayerSupport()
@@ -163,10 +163,10 @@ void CreateInstance()
 	// Enumerates available extensions
 	std::vector<vk::ExtensionProperties> instanceExtensions = vk::enumerateInstanceExtensionProperties();
 
-	// Enable the requested extentions
-	auto extentions = GetRequiredExtentions();
-	createInfo.enabledExtensionCount = extentions.size();
-	createInfo.ppEnabledExtensionNames = extentions.data();
+	// Enable the requested extensions
+	auto extensions = GetRequiredExtensions();
+	createInfo.enabledExtensionCount = extensions.size();
+	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	instance = vk::createInstance(createInfo);
 }

@@ -5,7 +5,7 @@
 
 namespace Vulkan
 {
-	std::vector<const char*> GetRequiredExtentions();
+	std::vector<const char*> GetRequiredExtensions();
 	bool CheckValidationLayerSupport();
 	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
