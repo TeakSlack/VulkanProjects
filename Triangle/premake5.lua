@@ -15,18 +15,28 @@ project "Triangle"
         {
             "%{IncludeDir.VulkanSDK}",
             "%{IncludeDir.spdlog}",
+            "%{IncludeDir.glfw}"
         }
 
         libdirs 
         { 
-            "%{LibraryDir.VulkanSDK}" 
+            "%{LibraryDir.VulkanSDK}" ,
+            "%{LibraryDir.glfw}"
         }
 
         filter "system:windows"
-            links { "vulkan-1" } -- Vulkan lib for Windows
+            links 
+            { 
+                "vulkan-1", -- Vulkan lib for Windows ('vulkan-1.lib')
+                "glfw"
+            }
 
         filter "system:linux"
-            links { "vulkan" }  -- Vulkan library for Linux (`libvulkan.so`)
+            links 
+            { 
+                "vulkan", -- Vulkan library for Linux (`libvulkan.so`)
+                "glfw"
+            } 
 
         filter "configurations:Debug"
             defines { "DEBUG", "_DEBUG" }
