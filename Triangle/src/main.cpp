@@ -116,6 +116,18 @@ void CreateDevice()
 	device = deviceReturn.value();
 }
 
+void GetQueues()
+{
+	auto presentQueueRet = device.get_queue(vkb::QueueType::present);
+	if (!presentQueueRet)
+	{
+		logger->error("Failed to get presentation queue: " + presentQueueRet.error().message());
+		exit(EXIT_FAILURE);
+	}
+
+	presentQueue = presentQueueRet.value();
+}
+
 void DestroyGLFWWindow()
 {
 	glfwDestroyWindow(window);
