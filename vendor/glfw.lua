@@ -47,6 +47,7 @@ project "glfw"
             "glfw/src/win32_time.c",
             "glfw/src/win32_time.h",
             "glfw/src/win32_window.c",
+            "glfw/src/wgl_context.c"
         }
 
         defines
