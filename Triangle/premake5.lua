@@ -15,27 +15,33 @@ project "Triangle"
         {
             "%{IncludeDir.VulkanSDK}",
             "%{IncludeDir.spdlog}",
-            "%{IncludeDir.glfw}"
+            "%{IncludeDir.glfw}",
+            "%{IncludeDir.vk_bootstrap}"
         }
 
         libdirs 
         { 
             "%{LibraryDir.VulkanSDK}" ,
-            "%{LibraryDir.glfw}"
+            "%{LibraryDir.glfw}",
+            "%{LibraryDir.vk_bootstrap}"
+        }
+
+        links
+        {
+            "glfw",
+            "vk-bootstrap"
         }
 
         filter "system:windows"
             links 
             { 
                 "vulkan-1", -- Vulkan lib for Windows ('vulkan-1.lib')
-                "glfw"
             }
 
         filter "system:linux"
             links 
             { 
                 "vulkan", -- Vulkan library for Linux (`libvulkan.so`)
-                "glfw"
             } 
 
         filter "configurations:Debug"
