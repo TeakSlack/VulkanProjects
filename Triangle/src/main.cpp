@@ -14,9 +14,16 @@ auto logger = spdlog::stdout_color_mt("logger");
 vkb::Instance instance;
 vkb::PhysicalDevice physicalDevice;
 vkb::Device device;
+vkb::Swapchain swapchain;
 VkSurfaceKHR surface;
 VkQueue presentQueue;
+VkQueue graphicsQueue;
 GLFWwindow* window;
+
+std::vector<VkImage> swapImages;
+std::vector<VkImageView> swapImageViews;
+VkFormat swapFormat;
+VkExtent2D swapExtent;
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -93,8 +100,14 @@ void CreateDevice()
 	VkPhysicalDeviceFeatures features{};
 	features.geometryShader = true;
 
+	std::vector<const char*> extensions
+	{
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+	};
+
 	auto physReturn = physSelector
 		.set_surface(surface)
+		.add_required_extensions(extensions)
 		.set_required_features(features)
 		.select();
 	if (!physReturn)
@@ -125,7 +138,58 @@ void GetQueues()
 		exit(EXIT_FAILURE);
 	}
 
+	auto graphicsQueueRet = device.get_queue(vkb::QueueType::graphics);
+	if (!graphicsQueueRet)
+	{
+		logger->error("Failed to get graphics queue: " + graphicsQueueRet.error().message());
+		exit(EXIT_FAILURE);
+	}
+
 	presentQueue = presentQueueRet.value();
+	graphicsQueue = graphicsQueueRet.value();
+}
+
+void CreateSwapchain()
+{
+	vkb::SwapchainBuilder swapBuilder{ device };
+
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+
+	swapBuilder.use_default_format_selection();
+	swapBuilder.use_default_present_mode_selection();
+	swapBuilder.use_default_image_usage_flags();
+	swapBuilder.set_desired_extent(width, height);
+	swapBuilder.set_image_array_layer_count(1);
+
+	auto swapRet = swapBuilder.build();
+
+	if (!swapRet)
+	{
+		logger->error("Failed to create swapchain: " + swapRet.error().message());
+		exit(EXIT_FAILURE);
+	}
+
+	swapchain = swapRet.value();
+
+	swapImages = swapchain.get_images().value();
+	swapFormat = swapchain.image_format;
+	swapExtent = swapchain.extent;
+}
+
+void CreateImageViews()
+{
+	swapImageViews.resize(swapImages.size());
+
+	for (size_t i = 0; i < swapImageViews.size(); i++)
+	{
+
+	}
+}
+
+void DestroySwapchain()
+{
+	vkb::destroy_swapchain(swapchain);
 }
 
 void DestroyGLFWWindow()
@@ -153,12 +217,14 @@ void Run()
 	if (!CreateInstance()) exit(EXIT_FAILURE);
 	CreateGLFWWindow();
 	CreateDevice();
+	CreateSwapchain();
 
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
 	}
 
+	DestroySwapchain();
 	DestroyDevice();
 	DestroyInstance();
 	DestroyGLFWWindow();
@@ -172,7 +238,6 @@ int main()
 	}
 	catch (const std::exception& e)
 	{
-		
 		return EXIT_FAILURE;
 	}
 
