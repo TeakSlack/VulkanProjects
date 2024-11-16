@@ -1,6 +1,8 @@
 #include <exception>
 #include <iostream>
 #include <vector>
+#include <fstream>
+#include <filesystem>
 
 #include <vulkan/vulkan.h>
 #include <spdlog/spdlog.h>
@@ -24,6 +26,26 @@ std::vector<VkImage> swapImages;
 std::vector<VkImageView> swapImageViews;
 VkFormat swapFormat;
 VkExtent2D swapExtent;
+
+static std::vector<char> readFile(const std::string& fileName)
+{
+	std::ifstream file(fileName, std::ifstream::ate | std::ifstream::binary);
+
+	if (!file.is_open())
+	{
+		logger->error("Failed to open file " + fileName);
+		exit(EXIT_FAILURE);
+	}
+
+	size_t fileSize = file.tellg();
+	std::vector<char> buffer(fileSize);
+
+	file.seekg(0);
+	file.read(buffer.data(), fileSize);
+
+	file.close();
+	return buffer;
+}
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -206,6 +228,50 @@ void CreateImageViews()
 	}
 }
 
+VkShaderModule CreateShaderModule(const std::vector<char>& code)
+{
+	VkShaderModuleCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = code.size();
+	createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+	VkShaderModule module;
+	if (vkCreateShaderModule(device.device, &createInfo, nullptr, &module) != VK_SUCCESS)
+	{
+		logger->error("Failed to create shader module!");
+		exit(EXIT_FAILURE);
+	}
+
+	return module;
+}
+
+void CreateGraphicsPipeline()
+{
+	auto vertShader = readFile("src/shader/vert.spv");
+	auto fragShader = readFile("src/shader/frag.spv");
+
+
+	VkShaderModule vertModule = CreateShaderModule(vertShader);
+	VkShaderModule fragModule = CreateShaderModule(fragShader);
+
+	VkPipelineShaderStageCreateInfo vertStageInfo{};
+	vertStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertStageInfo.module = vertModule;
+	vertStageInfo.pName = "main";
+
+	VkPipelineShaderStageCreateInfo fragStageInfo{};
+	fragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragStageInfo.module = fragModule;
+	fragStageInfo.pName = "main";
+
+	VkPipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+	vkDestroyShaderModule(device.device, vertModule, nullptr);
+	vkDestroyShaderModule(device.device, fragModule, nullptr);
+}
+
 void DestroyImageViews()
 {
 	for (auto imageView : swapImageViews)
@@ -246,6 +312,7 @@ void Run()
 	CreateDevice();
 	CreateSwapchain();
 	CreateImageViews();
+	CreateGraphicsPipeline();
 
 	while (!glfwWindowShouldClose(window))
 	{
