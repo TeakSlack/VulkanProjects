@@ -25,6 +25,8 @@ std::vector<VkImage> swapImages;
 std::vector<VkImageView> swapImageViews;
 VkFormat swapFormat;
 VkExtent2D swapExtent;
+VkRenderPass renderPass;
+VkPipelineLayout pipelineLayout;
 
 static std::vector<char> readFile(const std::string& fileName)
 {
@@ -123,7 +125,8 @@ void CreateDevice()
 
 	std::vector<const char*> extensions
 	{
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME
 	};
 
 	auto physReturn = physSelector
@@ -216,6 +219,41 @@ VkShaderModule CreateShaderModule(const std::vector<char>& code)
 	return module;
 }
 
+void CreateRenderPass()
+{
+	VkAttachmentDescription colorAttachment{};
+	colorAttachment.format = swapFormat;
+	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	VkAttachmentReference colorAttachmentRef{};
+	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass{};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorAttachmentRef;
+
+	VkRenderPassCreateInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.attachmentCount = 1;
+	renderPassInfo.pAttachments = &colorAttachment;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+
+	if (vkCreateRenderPass(device.device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
+	{
+		logger->error("Failed to create render pass!");
+		exit(EXIT_FAILURE);
+	}
+}
+
 void CreateGraphicsPipeline()
 {
 	auto vertShader = readFile("src/shader/vert.spv");
@@ -288,8 +326,35 @@ void CreateGraphicsPipeline()
 	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterizer.depthBiasEnable = VK_FALSE;
 
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+	if (vkCreatePipelineLayout(device.device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+		logger->error("Failed to create pipeline layout!");
+		exit(EXIT_FAILURE);
+	}
+
 	vkDestroyShaderModule(device.device, vertModule, nullptr);
 	vkDestroyShaderModule(device.device, fragModule, nullptr);
+}
+
+void DestroyRenderPass()
+{
+	vkDestroyRenderPass(device.device, renderPass, nullptr);
+}
+
+void DestroyGraphicsPipeline()
+{
+	vkDestroyPipelineLayout(device.device, pipelineLayout, nullptr);
 }
 
 void DestroySwapchain()
@@ -324,6 +389,7 @@ void Run()
 	CreateGLFWWindow();
 	CreateDevice();
 	CreateSwapchain();
+	CreateRenderPass();
 	CreateGraphicsPipeline();
 
 	while (!glfwWindowShouldClose(window))
@@ -331,6 +397,8 @@ void Run()
 		glfwPollEvents();
 	}
 
+	DestroyGraphicsPipeline();
+	DestroyRenderPass();
 	DestroySwapchain();
 	DestroyDevice();
 	DestroyInstance();
