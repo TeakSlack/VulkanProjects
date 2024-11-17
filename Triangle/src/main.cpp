@@ -27,6 +27,7 @@ VkFormat swapFormat;
 VkExtent2D swapExtent;
 VkRenderPass renderPass;
 VkPipelineLayout pipelineLayout;
+VkPipeline graphicsPipeline;
 
 static std::vector<char> readFile(const std::string& fileName)
 {
@@ -142,7 +143,12 @@ void CreateDevice()
 
 	physicalDevice = physReturn.value();
 
+	VkPhysicalDeviceSynchronization2Features synchronization2{};
+	synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+	synchronization2.synchronization2 = true;
+
 	vkb::DeviceBuilder deviceBuilder{ physicalDevice };
+	deviceBuilder.add_pNext(&synchronization2);
 	auto deviceReturn = deviceBuilder.build();
 	if (!deviceReturn)
 	{
@@ -335,11 +341,38 @@ void CreateGraphicsPipeline()
 	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 	colorBlendAttachment.blendEnable = VK_FALSE;
 
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.logicOpEnable = VK_FALSE;
+	colorBlending.attachmentCount = 1;
+	colorBlending.pAttachments = &colorBlendAttachment;
+
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
 	if (vkCreatePipelineLayout(device.device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
 		logger->error("Failed to create pipeline layout!");
+		exit(EXIT_FAILURE);
+	}
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStages;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = &dynamicState;
+	pipelineInfo.layout = pipelineLayout;
+	pipelineInfo.renderPass = renderPass;
+	pipelineInfo.subpass = 0;
+
+	if (vkCreateGraphicsPipelines(device.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+	{
+		logger->error("Failed to create graphics pipeline!");
 		exit(EXIT_FAILURE);
 	}
 
@@ -354,6 +387,7 @@ void DestroyRenderPass()
 
 void DestroyGraphicsPipeline()
 {
+	vkDestroyPipeline(device.device, graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(device.device, pipelineLayout, nullptr);
 }
 
