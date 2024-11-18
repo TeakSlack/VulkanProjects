@@ -25,6 +25,7 @@ std::vector<VkImage> swapImages;
 std::vector<VkImageView> swapImageViews;
 VkFormat swapFormat;
 VkExtent2D swapExtent;
+std::vector<VkFramebuffer> swapFramebuffers;
 VkRenderPass renderPass;
 VkPipelineLayout pipelineLayout;
 VkPipeline graphicsPipeline;
@@ -380,6 +381,42 @@ void CreateGraphicsPipeline()
 	vkDestroyShaderModule(device.device, fragModule, nullptr);
 }
 
+void CreateFramebuffers()
+{
+	swapFramebuffers.resize(swapImageViews.size());
+
+	for (size_t i = 0; i < swapFramebuffers.size(); i++)
+	{
+		VkImageView attachments[] =
+		{
+			swapImageViews[i]
+		};
+
+		VkFramebufferCreateInfo framebufferInfo{};
+		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		framebufferInfo.renderPass = renderPass;
+		framebufferInfo.attachmentCount = 1;
+		framebufferInfo.pAttachments = attachments;
+		framebufferInfo.width = swapExtent.width;
+		framebufferInfo.height = swapExtent.height;
+		framebufferInfo.layers = 1;
+
+		if (vkCreateFramebuffer(device.device, &framebufferInfo, nullptr, &swapFramebuffers[i]) != VK_SUCCESS)
+		{
+			logger->error("Failed to create framebufffers!");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+void DestroyFramebuffers()
+{
+	for (auto framebuffer : swapFramebuffers)
+	{
+		vkDestroyFramebuffer(device.device, framebuffer, nullptr);
+	}
+}
+
 void DestroyRenderPass()
 {
 	vkDestroyRenderPass(device.device, renderPass, nullptr);
@@ -425,12 +462,14 @@ void Run()
 	CreateSwapchain();
 	CreateRenderPass();
 	CreateGraphicsPipeline();
+	CreateFramebuffers();
 
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
 	}
 
+	DestroyFramebuffers();
 	DestroyGraphicsPipeline();
 	DestroyRenderPass();
 	DestroySwapchain();
