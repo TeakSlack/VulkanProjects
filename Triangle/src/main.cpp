@@ -29,6 +29,8 @@ std::vector<VkFramebuffer> swapFramebuffers;
 VkRenderPass renderPass;
 VkPipelineLayout pipelineLayout;
 VkPipeline graphicsPipeline;
+VkCommandPool commandPool;
+VkCommandBuffer commandBuffer;
 
 static std::vector<char> readFile(const std::string& fileName)
 {
@@ -409,6 +411,99 @@ void CreateFramebuffers()
 	}
 }
 
+void CreateCommandPool()
+{
+	VkCommandPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.queueFamilyIndex = device.get_queue_index(vkb::QueueType::graphics).value();
+
+	if (vkCreateCommandPool(device.device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
+	{
+		logger->error("Failed to create command pool!");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void CreateCommandBuffer()
+{
+	VkCommandBufferAllocateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	bufferInfo.commandPool = commandPool;
+	bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	bufferInfo.commandBufferCount = 1;
+
+	if (vkAllocateCommandBuffers(device.device, &bufferInfo, &commandBuffer) != VK_SUCCESS)
+	{
+		logger->error("Failed to allocate command buffers!");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx)
+{
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+	{
+		logger->error("Failed to begin recording command buffer!");
+		exit(EXIT_FAILURE);
+	}
+
+	VkClearValue clearColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+	VkRenderPassBeginInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassInfo.renderPass = renderPass;
+	renderPassInfo.framebuffer = swapFramebuffers[imageIdx];
+	renderPassInfo.renderArea.offset = { 0, 0 };
+	renderPassInfo.renderArea.extent = swapExtent;
+	renderPassInfo.clearValueCount = 1;
+	renderPassInfo.pClearValues = &clearColor;
+
+	vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = static_cast<float>(swapExtent.width);
+	viewport.height = static_cast<float>(swapExtent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = swapExtent;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+	vkCmdEndRenderPass(commandBuffer);
+
+	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+	{
+		logger->error("Failed to record command buffer!");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void DrawFrame()
+{
+
+}
+
+void DestroyCommandBuffer()
+{
+	vkDestroyCommandPool(device.device, commandPool, nullptr);
+}
+
+void DestroyCommandPool()
+{
+	vkDestroyCommandPool(device.device, commandPool, nullptr);
+}
+
 void DestroyFramebuffers()
 {
 	for (auto framebuffer : swapFramebuffers)
@@ -463,12 +558,18 @@ void Run()
 	CreateRenderPass();
 	CreateGraphicsPipeline();
 	CreateFramebuffers();
+	CreateCommandPool();
+	CreateCommandBuffer();
 
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
+		DrawFrame();
 	}
 
+	vkDeviceWaitIdle(device.device);
+
+	DestroyCommandBuffer();
 	DestroyFramebuffers();
 	DestroyGraphicsPipeline();
 	DestroyRenderPass();
