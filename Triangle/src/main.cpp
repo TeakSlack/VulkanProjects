@@ -32,6 +32,10 @@ VkPipeline graphicsPipeline;
 VkCommandPool commandPool;
 VkCommandBuffer commandBuffer;
 
+VkSemaphore imageAvaliableSemaphore;
+VkSemaphore renderFinishedSemaphore;
+VkFence inFlightFence;
+
 static std::vector<char> readFile(const std::string& fileName)
 {
 	std::ifstream file(fileName, std::ifstream::ate | std::ifstream::binary);
@@ -249,12 +253,21 @@ void CreateRenderPass()
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &colorAttachmentRef;
 
+	VkSubpassDependency dependency{};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassInfo.attachmentCount = 1;
 	renderPassInfo.pAttachments = &colorAttachment;
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 1;
+	renderPassInfo.pDependencies = &dependency;
 
 	if (vkCreateRenderPass(device.device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
 	{
@@ -489,9 +502,75 @@ void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIdx)
 	}
 }
 
+void CreateSyncObjects()
+{
+	VkSemaphoreCreateInfo semaphoreInfo{};
+	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	if (
+		vkCreateSemaphore(device.device, &semaphoreInfo, nullptr, &imageAvaliableSemaphore) != VK_SUCCESS ||
+		vkCreateSemaphore(device.device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
+		vkCreateFence(device.device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS
+		)
+	{
+		logger->error("Failed to create syncronization objects!");
+		exit(EXIT_FAILURE);
+	}
+}
+
 void DrawFrame()
 {
+	vkWaitForFences(device.device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+	vkResetFences(device.device, 1, &inFlightFence);
 
+	uint32_t imageIdx;
+	vkAcquireNextImageKHR(device.device, swapchain, UINT64_MAX, imageAvaliableSemaphore, VK_NULL_HANDLE, &imageIdx);
+	vkResetCommandBuffer(commandBuffer, 0);
+	RecordCommandBuffer(commandBuffer, imageIdx);
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+	VkSemaphore waitSemaphores[] = { imageAvaliableSemaphore };
+	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+
+	VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = signalSemaphores;
+
+	if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS)
+	{
+		logger->error("Failed to submit queue for rendering!");
+		exit(EXIT_FAILURE);
+	}
+
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = signalSemaphores;
+
+	VkSwapchainKHR swapchains[] = { swapchain };
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = swapchains;
+	presentInfo.pImageIndices = &imageIdx;
+
+	vkQueuePresentKHR(graphicsQueue, &presentInfo);
+}
+
+void DestroySyncObjects()
+{
+	vkDestroySemaphore(device.device, imageAvaliableSemaphore, nullptr);
+	vkDestroySemaphore(device.device, renderFinishedSemaphore, nullptr);
+	vkDestroyFence(device.device, inFlightFence, nullptr);
 }
 
 void DestroyCommandBuffer()
@@ -554,12 +633,14 @@ void Run()
 	if (!CreateInstance()) exit(EXIT_FAILURE);
 	CreateGLFWWindow();
 	CreateDevice();
+	GetQueues();
 	CreateSwapchain();
 	CreateRenderPass();
 	CreateGraphicsPipeline();
 	CreateFramebuffers();
 	CreateCommandPool();
 	CreateCommandBuffer();
+	CreateSyncObjects();
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -569,6 +650,7 @@ void Run()
 
 	vkDeviceWaitIdle(device.device);
 
+	DestroySyncObjects();
 	DestroyCommandBuffer();
 	DestroyFramebuffers();
 	DestroyGraphicsPipeline();
