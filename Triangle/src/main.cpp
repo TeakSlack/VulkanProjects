@@ -32,6 +32,7 @@ public:
 		create_graphics_pipeline();
 		create_framebuffers();
 		create_command_objects();
+		create_sync_objects();
 	}
 
 	void run()
@@ -39,12 +40,15 @@ public:
 		while (!glfwWindowShouldClose(window))
 		{
 			glfwPollEvents();
-
+			draw_frame();
 		}
 	}
 
 	void destroy()
 	{
+		device.destroyFence(inFlightFence);
+		device.destroySemaphore(renderFinishedSemaphore);
+		device.destroySemaphore(imageAvailableSemaphore);
 		device.destroyCommandPool(commandPool);
 		for (const auto& framebuffer : swapFramebuffers) device.destroyFramebuffer(framebuffer);
 		device.destroyPipeline(graphicsPipeline);
@@ -83,6 +87,8 @@ private:
 	std::vector<vk::Framebuffer> swapFramebuffers;
 	vk::CommandPool commandPool;
 	vk::CommandBuffer commandBuffer;
+	vk::Semaphore imageAvailableSemaphore, renderFinishedSemaphore;
+	vk::Fence inFlightFence;
 
 private:
 	static std::vector<char> read_file(const std::string& fileName)
@@ -341,6 +347,71 @@ private:
 		std::vector<vk::CommandBuffer> buffers = device.allocateCommandBuffers(bufferInfo);
 
 		commandBuffer = buffers.front();
+	}
+
+	void record_command_buffer(vk::CommandBuffer commandBuffer, uint32_t imageIdx)
+	{
+		vk::CommandBufferBeginInfo beginInfo{};
+		commandBuffer.begin(beginInfo);
+
+		vk::ClearValue clearColor({ 0.0f, 0.0f, 0.0f, 1.0f });
+
+		vk::Rect2D renderArea({ 0,0 }, swapExtent);
+		vk::RenderPassBeginInfo renderPassInfo(renderPass, swapFramebuffers[imageIdx], renderArea, clearColor);
+
+		commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+
+		vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(swapExtent.width), static_cast<float>(swapExtent.height), 0.0f, 1.0f);
+		commandBuffer.setViewport(0, viewport);
+		commandBuffer.setScissor(0, renderArea);
+
+		commandBuffer.draw(3, 1, 0, 0);
+		commandBuffer.endRenderPass();
+		commandBuffer.end();
+	}
+
+	void create_sync_objects()
+	{
+		vk::SemaphoreCreateInfo semaphoreInfo{};
+		vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
+
+		imageAvailableSemaphore = device.createSemaphore(semaphoreInfo);
+		renderFinishedSemaphore = device.createSemaphore(semaphoreInfo);
+		inFlightFence = device.createFence(fenceInfo);
+	}
+	
+	void draw_frame()
+	{
+		vk::Result res1 = device.waitForFences(inFlightFence, vk::True, UINT64_MAX);
+		device.resetFences(inFlightFence);
+
+		if (res1 != vk::Result::eSuccess) error("Fence operation failed!");
+
+		auto res2 = device.acquireNextImageKHR(swapchain, UINT64_MAX, imageAvailableSemaphore, {});
+
+		if (res2.result != vk::Result::eSuccess) error("Failed to acquire next image.");
+		uint32_t imageIdx = res2.value;
+
+		commandBuffer.reset();
+		record_command_buffer(commandBuffer, imageIdx);
+
+		const std::vector<vk::Semaphore> waitSemaphores(1, imageAvailableSemaphore);
+		const std::vector<vk::Semaphore> signalSemaphores(1,renderFinishedSemaphore);
+		const std::vector<vk::PipelineStageFlags> waitStages(1, vk::PipelineStageFlagBits::eColorAttachmentOutput);
+		const std::vector commandBuffers(1, commandBuffer);
+		vk::SubmitInfo submitInfo{};
+		submitInfo.setWaitSemaphoreCount(waitSemaphores.size());
+		submitInfo.setPWaitSemaphores(waitSemaphores.data());
+		submitInfo.setSignalSemaphoreCount(signalSemaphores.size());
+		submitInfo.setPSignalSemaphores(signalSemaphores.data());
+		submitInfo.setPWaitDstStageMask(waitStages.data());
+		submitInfo.setCommandBufferCount(commandBuffers.size());
+		submitInfo.setPCommandBuffers(commandBuffers.data());
+		graphicsQueue.submit(submitInfo, inFlightFence);
+
+		vk::PresentInfoKHR presentInfo(signalSemaphores, swapchain, imageIdx);
+		if (graphicsQueue.presentKHR(presentInfo) != vk::Result::eSuccess) error("Failed to present!");
 	}
 };
 
