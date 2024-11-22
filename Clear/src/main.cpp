@@ -63,7 +63,7 @@ public:
 		{
 			glfwPollEvents();
 			hue = hue > 1.0f ? 0.0f : hue + 0.001f;
-			clearValue = rbgToHsv(hue, 1.0f, 1.0f);
+			clearValue = rbgToHsv(hue, 0.5f, 1.0f);
 			draw_frame();
 		}
 	}
