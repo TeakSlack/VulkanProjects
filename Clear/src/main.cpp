@@ -3,23 +3,25 @@
 #include <vector>
 #include <cmath>
 
-#include <vulkan/vulkan.hpp>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.hpp> // Vulkan C++ bindings
+#include <spdlog/spdlog.h> // Logging library
+#include <spdlog/sinks/stdout_color_sinks.h> // Color output for logging library
+#include <GLFW/glfw3.h> // Window and input management library
 
-#include "VkBootstrap.h"
+#include "VkBootstrap.h" // Helper library for Vulkan initialization
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
+const int MAX_FRAMES_IN_FLIGHT = 2; // Max number of frames that can be rendered concurrently
 
 auto logger = spdlog::stdout_color_mt("logger");
 
+// Logs error message and quits application.
 void error(std::string message)
 {
 	logger->error("An error has occurred: " + message);
 	exit(EXIT_FAILURE);
 }
 
+// Converts from HSV to RGB colorspace for color-shift animation
 vk::ClearColorValue rbgToHsv(float h, float s, float v)
 {
 	float r, g, b;
@@ -44,39 +46,46 @@ vk::ClearColorValue rbgToHsv(float h, float s, float v)
 	return { r, g, b, 1.0f };
 }
 
-class Triangle
+// Main class representing the application
+class Clear
 {
 public:
 	std::string application_name = "Clear";
 
 public:
+	// Initialize Vulkan and related resources
 	void init()
 	{
-		create_base_objects();
-		create_command_objects();
-		create_sync_objects();
+		create_base_objects(); // Create Vulkan instance, physical and logical device, queues, swapchain, and window
+		create_command_objects(); // Create command pool and buffers
+		create_sync_objects(); // Create synchronization primitives
 	}
 
+	// Main application loop
 	void run()
 	{
 		while (!glfwWindowShouldClose(window))
 		{
-			glfwPollEvents();
-			hue = hue > 1.0f ? 0.0f : hue + 0.001f;
-			clearValue = rbgToHsv(hue, 0.5f, 1.0f);
-			draw_frame();
+			glfwPollEvents(); // Process user input and window events
+			static float hue;
+			hue = hue > 1.0f ? 0.0f : hue + 0.001f; // Cycle hue value
+			clearValue = rbgToHsv(hue, 0.5f, 1.0f); // Update clear color
+			draw_frame(); // Renders the current frame
 		}
 	}
 
+	// Cleanup resources
 	void destroy()
 	{
-		device.waitIdle();
-		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		device.waitIdle(); // Wait till all device operations are complete
+		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) // Destroy synchronization primitives
 		{
 			device.destroySemaphore(renderFinishedSemaphores[i]);
 			device.destroySemaphore(imageAvailableSemaphores[i]);
 			device.destroyFence(inFlightFences[i]);
 		}
+
+		//Destroy Vulkan related objects
 		device.destroyCommandPool(commandPool);
 		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
 		device.destroySwapchainKHR(swapchain);
@@ -91,17 +100,16 @@ public:
 	}
 
 private:
-	float hue = 0.0f;
-	vk::ClearColorValue clearValue{ 0.0f, 0.0f, 0.0f, 1.0f };
+	vk::ClearColorValue clearValue{ 0.0f, 0.0f, 0.0f, 1.0f }; // Clear color for rendering
 
-	GLFWwindow* window;
+	GLFWwindow* window; // Handle to the application window
 
-	vk::Instance instance;
+	vk::Instance instance; // Vulkan instance, the communication layer between the client code and Vulkan api
 	vk::DebugUtilsMessengerEXT debug_messenger;
 	vk::PhysicalDevice physicalDevice;
 	vk::Device device;
 	vk::SurfaceKHR surface;
-	uint32_t presentIdx, graphicsIdx;
+	uint32_t presentIdx, graphicsIdx; // Queue indicies
 	vk::Queue presentQueue, graphicsQueue;
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::Image> swapImages;
@@ -115,24 +123,29 @@ private:
 	uint32_t currentFrame = 0;
 
 private:
+	// Create application window
 	void create_window()
 	{
 		if (!glfwInit()) exit(EXIT_FAILURE);
 
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Ensure OpenGL context isn't created
 		window = glfwCreateWindow(1280, 720, application_name.c_str(), NULL, NULL);
 		if (!window) error("Failed to create window!");
 
+		// Create Vulkan surface for window
 		VkResult err = glfwCreateWindowSurface(instance, window, NULL, reinterpret_cast<VkSurfaceKHR*>(&surface));
 		if (err != VK_SUCCESS) error("Failed to create window surface");
 	}
 
+	// Create Vulkan instance, physical and logical device, queues, swapchain, and window
 	void create_base_objects()
 	{
+		// Get instance extensions
 		uint32_t glfwCount = 0;
-		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwCount); // Get GLFW's required extensions
-		std::vector<const char*> requiredExtensions(glfwExtensions, glfwExtensions + glfwCount); // Create array of required extensions
+		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwCount);
+		std::vector<const char*> requiredExtensions(glfwExtensions, glfwExtensions + glfwCount);
 
+		// Give Vulkan instance it's neccessary build info
 		vkb::InstanceBuilder instanceBuilder;
 		instanceBuilder.set_app_name(application_name.c_str());
 		instanceBuilder.set_app_version(VK_MAKE_VERSION(1, 0, 0));
@@ -140,6 +153,7 @@ private:
 		instanceBuilder.set_engine_version(VK_MAKE_VERSION(1, 0, 0));
 		instanceBuilder.enable_extensions(requiredExtensions);
 
+		// If debug is enabled, use debug messenger
 #ifdef DEBUG
 		instanceBuilder.request_validation_layers();
 		instanceBuilder.use_default_debug_messenger();
@@ -150,8 +164,10 @@ private:
 
 		debug_messenger = instanceRet.value().debug_messenger;
 		instance = instanceRet.value().instance;
-		create_window();
 
+		create_window(); // Create the application window
+
+		// Required extensions and features for the device
 		std::vector<const char*> requiredDeviceExtensions
 		{
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -166,6 +182,7 @@ private:
 		vk::PhysicalDeviceFeatures features{};
 		features.geometryShader = true;
 
+		// Select the physical device (GPU) based upon defined criteria
 		vkb::PhysicalDeviceSelector physDeviceSelector{ instanceRet.value() };
 		physDeviceSelector.add_required_extensions(requiredDeviceExtensions);
 		physDeviceSelector.set_surface(surface);
@@ -176,14 +193,16 @@ private:
 
 		physicalDevice = physRet.value().physical_device;
 
+		// Create the logical device from the GPU
 		vkb::DeviceBuilder deviceBuilder{ physRet.value() };
-		deviceBuilder.add_pNext(&synchronization2);
+		deviceBuilder.add_pNext(&synchronization2); // Enable synchronization2 extension
 
 		auto devRet = deviceBuilder.build();
 		if (!devRet) error("Failed to create device (" + devRet.error().message() + ")");
 
 		device = devRet.value().device;
 
+		// Get present and graphics queues and indicies
 		auto presentQueueRet = devRet.value().get_queue(vkb::QueueType::present);
 		presentIdx = devRet.value().get_queue_index(vkb::QueueType::present).value();
 		if (!presentQueueRet)
@@ -204,6 +223,7 @@ private:
 		presentQueue = presentQueueRet.value();
 		graphicsQueue = graphicsQueueRet.value();
 
+		// Build the swapchain for presentation
 		vkb::SwapchainBuilder swapBuilder{ devRet.value() };
 
 		int width, height;
@@ -219,92 +239,187 @@ private:
 		if (!swapRet) error("Failed to create swapchain (" + swapRet.error().message() + ")");
 		swapchain = swapRet.value().swapchain;
 
+		// Get swapchain images and imageviews
 		std::vector<VkImage> _swapImages = swapRet.value().get_images().value();
 		for (const auto image : _swapImages) swapImages.push_back(image);
 
 		std::vector<VkImageView> _swapImageViews = swapRet.value().get_image_views().value();
 		for (const auto imageView : _swapImageViews) swapImageViews.push_back(imageView);
 
+		// Get swapchain extent and format
 		swapExtent = swapRet.value().extent;
 		swapFormat = static_cast<vk::Format>(swapRet.value().image_format);
 	}
 
+	// Create command pool and buffers
 	void create_command_objects()
 	{
-		vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIdx);
+		vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIdx); // Create command pool for graphics queue
 		commandPool = device.createCommandPool(poolInfo);
 
+		// Create command buffer for every frame in flight
 		commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
 		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, commandBuffers.size());
 		commandBuffers = device.allocateCommandBuffers(bufferInfo);
 	}
 
+	// Record draw calls and info to command buffer
 	void record_command_buffer(vk::CommandBuffer& commandBuffer, uint32_t imageIdx)
 	{
+		// Begin recording commands into the command buffer
 		vk::CommandBufferBeginInfo beginInfo{};
 		beginInfo.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse;
+		// Allows the command buffer to be resubmitted while it is still being executed
 
-		vk::ImageSubresourceRange subresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		// Define the image subresource range that will be affected by the commands
+		vk::ImageSubresourceRange subresourceRange(
+			vk::ImageAspectFlagBits::eColor,	// Specify that the range applies to the color aspect of the image
+			0,									// Base mipmap level
+			1,									// Number of mipmap levels
+			0,									// Base array layer
+			1									// Number of array layers
+		);
 
-		vk::ImageMemoryBarrier presentToClearBarrier(vk::AccessFlagBits::eMemoryRead, vk::AccessFlagBits::eMemoryWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, presentIdx, graphicsIdx, swapImages[imageIdx], subresourceRange);
+		// Define the barrier for transitioning the image layout from undefined to optimal for transfer
+		vk::ImageMemoryBarrier presentToClearBarrier(
+			vk::AccessFlagBits::eMemoryRead,		// Current access mask: read access (presenting)
+			vk::AccessFlagBits::eMemoryWrite,		// New access mask: write access (transfer operation)
+			vk::ImageLayout::eUndefined,			// Current layout: undefined (initial state)
+			vk::ImageLayout::eTransferDstOptimal,	// New layout: optimal for transfer as destination
+			presentIdx,								// Source queue family index
+			presentIdx,								// Destination queue family index
+			swapImages[imageIdx],					// Target image
+			subresourceRange						// Subresource range for the image
+		);
 
-		vk::ImageMemoryBarrier clearToPresentBarrier(vk::AccessFlagBits::eMemoryWrite, vk::AccessFlagBits::eMemoryRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, graphicsIdx, presentIdx, swapImages[imageIdx], subresourceRange);
+		// Define the barrier for transitioning the image layout from transfer destination to presentable
+		vk::ImageMemoryBarrier clearToPresentBarrier(
+			vk::AccessFlagBits::eMemoryWrite,		// Current access mask: write access (transfer operation)
+			vk::AccessFlagBits::eMemoryRead,		// New access mask: read access (presenting)
+			vk::ImageLayout::eTransferDstOptimal,	// Current layout: optimal for transfer as destination
+			vk::ImageLayout::ePresentSrcKHR,		// New layout: suitable for presenting
+			presentIdx,								// Source queue family index
+			presentIdx,								// Destination queue family index
+			swapImages[imageIdx],					// Target image
+			subresourceRange						// Subresource range for the image
+		);
 
+		// Start recording commands
 		commandBuffer.begin(beginInfo);
 
-		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, presentToClearBarrier);
-		commandBuffer.clearColorImage(swapImages[imageIdx], vk::ImageLayout::eTransferDstOptimal, clearValue, subresourceRange);
-		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {}, clearToPresentBarrier);
+		// Insert a pipeline barrier to transition the image layout to the transfer destination layout
+		commandBuffer.pipelineBarrier(
+			vk::PipelineStageFlagBits::eTransfer,	// Source stage: transfer stage
+			vk::PipelineStageFlagBits::eTransfer,	// Destination stage: transfer stage
+			{},										// No dependency flags
+			{},										// No memory barriers
+			{},										// No buffer memory barriers
+			presentToClearBarrier					// Image memory barrier
+		);
 
+		// Clear the image using the specified clear color
+		commandBuffer.clearColorImage(
+			swapImages[imageIdx],					// Target image
+			vk::ImageLayout::eTransferDstOptimal,	// Current layout of the image
+			clearValue,								// Clear color (HSV to RGB conversion result)
+			subresourceRange						// Subresource range to clear
+		);
+
+		// Insert a pipeline barrier to transition the image layout to the presentable layout
+		commandBuffer.pipelineBarrier(
+			vk::PipelineStageFlagBits::eTransfer,		// Source stage: transfer stage
+			vk::PipelineStageFlagBits::eBottomOfPipe,	// Destination stage: bottom of the pipeline
+			{},											// No dependency flags
+			{},											// No memory barriers
+			{},											// No buffer memory barriers
+			clearToPresentBarrier						// Image memory barrier
+		);
+
+		// Finish recording commands into the command buffer
 		commandBuffer.end();
 	}
 
+	// Create synchronization primitives
 	void create_sync_objects()
 	{
+		// Structure defining semaphore creation info
 		vk::SemaphoreCreateInfo semaphoreInfo{};
+
+		// Structure defining fence creation info
+		// Fences are created in the signaled state to allow the first frame to render without waiting
 		vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
 
+		// Resize the semaphore and fence vectors to accommodate the maximum frames in flight
 		imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 		renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 		inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
+		// Loop to create synchronization objects for each frame in flight
 		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
+			// Create a semaphore to signal when an image is available from the swapchain
 			imageAvailableSemaphores[i] = device.createSemaphore(semaphoreInfo);
+
+			// Create a semaphore to signal when rendering is finished
 			renderFinishedSemaphores[i] = device.createSemaphore(semaphoreInfo);
+
+			// Create a fence to synchronize the CPU with the GPU for each frame
 			inFlightFences[i] = device.createFence(fenceInfo);
 		}
 	}
 
+	// Renders a single frame by synchronizing, recording, and presenting
 	void draw_frame()
 	{
+		// Wait for the current frame's fence to ensure the GPU has finished processing it
 		auto res1 = device.waitForFences(inFlightFences[currentFrame], vk::True, UINT64_MAX);
+
+		// Reset the fence for the current frame to prepare for its next use
 		device.resetFences(inFlightFences[currentFrame]);
+
+		// Acquire the index of the next available swapchain image
 		auto res2 = device.acquireNextImageKHR(swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], {});
 
-		if (res1 != vk::Result::eSuccess || res2.result != vk::Result::eSuccess) error("Failed to acquire next image.");
+		// Handle errors during image acquisition
+		if (res1 != vk::Result::eSuccess || res2.result != vk::Result::eSuccess)
+			error("Failed to acquire next image.");
+
+		// Extract the index of the acquired image
 		uint32_t imageIdx = res2.value;
 
+		// Reset the command buffer for the current frame, preparing it for new commands
 		commandBuffers[currentFrame].reset();
+
+		// Record commands into the command buffer for rendering the current frame
 		record_command_buffer(commandBuffers[currentFrame], imageIdx);
 
-		const std::vector<vk::Semaphore> waitSemaphores(1, imageAvailableSemaphores[currentFrame]);
-		const std::vector<vk::Semaphore> signalSemaphores(1, renderFinishedSemaphores[currentFrame]);
-		const std::vector<vk::PipelineStageFlags> waitStages(1, vk::PipelineStageFlagBits::eColorAttachmentOutput);
+		// Configure synchronization structures for the command submission
+		const std::vector<vk::Semaphore> waitSemaphores(1, imageAvailableSemaphores[currentFrame]); // Wait for the image to be available
+		const std::vector<vk::Semaphore> signalSemaphores(1, renderFinishedSemaphores[currentFrame]); // Signal when rendering is finished
+		const std::vector<vk::PipelineStageFlags> waitStages(1, vk::PipelineStageFlagBits::eColorAttachmentOutput); // Pipeline stage to wait on
+
+		// Populate the submit info structure with synchronization and command buffer details
 		vk::SubmitInfo submitInfo{};
-		submitInfo.setWaitSemaphoreCount(waitSemaphores.size());
+		submitInfo.setWaitSemaphoreCount(waitSemaphores.size());      // Semaphores to wait on before executing
 		submitInfo.setPWaitSemaphores(waitSemaphores.data());
-		submitInfo.setSignalSemaphoreCount(signalSemaphores.size());
+		submitInfo.setSignalSemaphoreCount(signalSemaphores.size()); // Semaphores to signal when execution finishes
 		submitInfo.setPSignalSemaphores(signalSemaphores.data());
-		submitInfo.setPWaitDstStageMask(waitStages.data());
-		submitInfo.setCommandBufferCount(1);
+		submitInfo.setPWaitDstStageMask(waitStages.data());          // Specify the pipeline stages to wait at
+		submitInfo.setCommandBufferCount(1);                         // Submit only one command buffer
 		submitInfo.setPCommandBuffers(&commandBuffers[currentFrame]);
+
+		// Submit the recorded command buffer to the graphics queue and associate it with the current frame's fence
 		graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
 
+		// Configure presentation info with the signal semaphore and swapchain details
 		vk::PresentInfoKHR presentInfo(signalSemaphores, swapchain, imageIdx);
-		if (graphicsQueue.presentKHR(presentInfo) != vk::Result::eSuccess) error("Failed to present!");
 
+		// Present the rendered image to the screen
+		if (graphicsQueue.presentKHR(presentInfo) != vk::Result::eSuccess)
+			error("Failed to present!");
+
+		// Move to the next frame by updating the current frame index
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 };
@@ -315,7 +430,7 @@ int main()
 
 	try
 	{
-		Triangle app;
+		Clear app;
 
 		app.init();
 		app.run();
