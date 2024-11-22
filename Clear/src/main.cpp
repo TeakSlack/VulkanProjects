@@ -77,7 +77,6 @@ public:
 			device.destroySemaphore(imageAvailableSemaphores[i]);
 			device.destroyFence(inFlightFences[i]);
 		}
-		
 		device.destroyCommandPool(commandPool);
 		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
 		device.destroySwapchainKHR(swapchain);
