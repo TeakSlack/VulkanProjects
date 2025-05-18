@@ -4,6 +4,8 @@ import platform
 import subprocess
 
 from SetupPython import SetupPython
+SetupPython.Validate() # Ensure proper packages are installed before using them
+
 from SetupPremake import SetupPremake
 from SetupVulkan import SetupVulkan
 from SetupProjectsLinux import SetupProjectsLinux
@@ -11,7 +13,6 @@ from SetupProjectsLinux import SetupProjectsLinux
 # Change directory to project root
 os.chdir('../')
 
-SetupPython.Validate()
 hasPremake = SetupPremake.Validate()
 SetupVulkan.Validate()
 

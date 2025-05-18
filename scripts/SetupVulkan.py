@@ -55,7 +55,7 @@ class SetupVulkan:
 
         if platform.system() == "Windows":
             os.startfile(os.path.abspath(vulkanPath)) # Runs Vulkan SDK installer
-            print("Re-run this script after installation.")
+            print("Re-open terminal and re-run this script after installation.")
             sys.exit(0)
         elif platform.system() == "Linux":
             FileUtil.TarFile(vulkanPath, type='xz')
