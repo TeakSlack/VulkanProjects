@@ -1,4 +1,4 @@
-project "HelloVulkan"
+project "01_HelloVulkan"
         kind "ConsoleApp"
         language "C++"
         cppdialect "C++20"

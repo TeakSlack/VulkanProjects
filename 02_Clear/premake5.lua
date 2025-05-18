@@ -1,4 +1,4 @@
-project "Clear"
+project "02_Clear"
         kind "ConsoleApp"
         language "C++"
         cppdialect "C++20"

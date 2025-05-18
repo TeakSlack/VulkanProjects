@@ -1,4 +1,4 @@
-project "Triangle"
+project "03_Triangle"
         kind "ConsoleApp"
         language "C++"
         cppdialect "C++20"
