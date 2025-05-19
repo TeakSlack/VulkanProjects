@@ -1,12 +1,3 @@
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-// Hello Vulkan
-// 
-// Initializes the Vulkan API via creation of an
-// instance, enumerates instance layers and extensions,
-// enables certain validation layers in debug mode for
-// safety, then cleans up Vulkan and quits.
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-
 #include <vulkan/vulkan.hpp>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
