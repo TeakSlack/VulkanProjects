@@ -34,6 +34,7 @@ public:
 	void init()
 	{
 		create_base_objects();
+		create_swapchain();
 		create_render_pass();
 		create_graphics_pipeline();
 		create_framebuffers();
@@ -56,6 +57,13 @@ public:
 	{
 		device.waitIdle(); // Wait until all GPU work is done
 
+		destroy_swapchain();
+
+		// Destroy graphics pipeline
+		device.destroyPipeline(graphicsPipeline);
+		device.destroyPipelineLayout(pipelineLayout);
+		device.destroyRenderPass(renderPass);
+
 		// Destroy synchronization primitives
 		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
@@ -65,19 +73,7 @@ public:
 		}
 
 		device.destroyCommandPool(commandPool);
-
-		// Destroy all framebuffers
-		for (const auto& framebuffer : swapFramebuffers) device.destroyFramebuffer(framebuffer);
-
-		// Destroy graphics pipeline
-		device.destroyPipeline(graphicsPipeline);
-		device.destroyPipelineLayout(pipelineLayout);
-		device.destroyRenderPass(renderPass);
-
-		// Destroy image views
-		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
-
-		device.destroySwapchainKHR(swapchain);
+		
 		instance.destroySurfaceKHR(surface);
 		device.destroy();
 
@@ -116,6 +112,7 @@ private:
 	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
 	std::vector<vk::Fence> inFlightFences;
 	uint32_t currentFrame = 0;
+	bool framebufferResized = false;
 
 private:
 	// Helper to read binary file (e.g., SPIR-V shader)
@@ -148,11 +145,21 @@ private:
 		window = glfwCreateWindow(1280, 720, "Triangle", NULL, NULL);
 		if (!window) error("Failed to create window!");
 
+		glfwSetWindowUserPointer(window, this);
+		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
 		VkResult err = glfwCreateWindowSurface(instance, window, NULL, reinterpret_cast<VkSurfaceKHR*>(&surface));
 		if (err != VK_SUCCESS) error("Failed to create window surface");
 	}
 
-	// Create Vulkan device, physical device, logical device, and swapchain
+	// Callback for framebuffer resize in case of device driver not sending resize signal (vk::Result::eOutOfDateKHR)
+	static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+	{
+		auto app = reinterpret_cast<Triangle*>(glfwGetWindowUserPointer(window));
+		app->framebufferResized = true;
+	}
+
+	// Create Vulkan device, physical device, logical device
 	void create_base_objects()
 	{
 		// Get the extensions required by GLFW
@@ -228,9 +235,12 @@ private:
 
 		presentQueue = presentQueueRet.value();
 		graphicsQueue = graphicsQueueRet.value();
+	}
 
-		// Create swapchain
-		vkb::SwapchainBuilder swapBuilder{ devRet.value() };
+	// Creates swapchain, images, and image views
+	void create_swapchain()
+	{
+		vkb::SwapchainBuilder swapBuilder{ physicalDevice, device, surface, graphicsIdx, presentIdx };
 		int width, height;
 		glfwGetFramebufferSize(window, &width, &height);
 
@@ -245,8 +255,10 @@ private:
 
 		swapchain = swapRet.value().swapchain;
 
-		// Create swapchain image and views
+		// Create swapchain image and views, clearing previous entries (if any)
+		swapImages.clear();
 		for (const auto image : swapRet.value().get_images().value()) swapImages.push_back(image);
+		swapImageViews.clear();
 		for (const auto imageView : swapRet.value().get_image_views().value()) swapImageViews.push_back(imageView);
 
 		swapExtent = swapRet.value().extent;
@@ -464,14 +476,22 @@ private:
 	void draw_frame()
 	{
 		auto res1 = device.waitForFences(inFlightFences[currentFrame], vk::True, UINT64_MAX);
-		device.resetFences(inFlightFences[currentFrame]);
 
 		if (res1 != vk::Result::eSuccess) error("Fence operation failed!");
 
 		auto res2 = device.acquireNextImageKHR(swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], {});
 
-		if (res2.result != vk::Result::eSuccess) error("Failed to acquire next image.");
+		// Recreate swapchain if inadequate, exit draw_frame
+		if (res2.result == vk::Result::eErrorOutOfDateKHR)
+		{
+			recreate_swapchain();
+			return;
+		}
+		 else if (res2.result != vk::Result::eSuccess && res2.result != vk::Result::eSuboptimalKHR) error("Failed to acquire next image.");
 		uint32_t imageIdx = res2.value;
+
+		// Only reset fences if we are submitting work with it
+		device.resetFences(inFlightFences[currentFrame]);
 
 		commandBuffers[currentFrame].reset();
 		record_command_buffer(commandBuffers[currentFrame], imageIdx);
@@ -490,9 +510,49 @@ private:
 		graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
 
 		vk::PresentInfoKHR presentInfo(signalSemaphores, swapchain, imageIdx);
-		if (graphicsQueue.presentKHR(presentInfo) != vk::Result::eSuccess) error("Failed to present!");
+
+		// Recreate swapchain if out-of-date or suboptimal
+		auto res3 = graphicsQueue.presentKHR(presentInfo);
+		if (res3 == vk::Result::eErrorOutOfDateKHR || res3 == vk::Result::eSuboptimalKHR || framebufferResized)
+		{
+			framebufferResized = false;
+			recreate_swapchain();
+		}
+		else if (res3 != vk::Result::eSuccess) error("Failed to present!");
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+	}
+
+	// Cleanup swapchain objects for application exit or swapchain recreation
+	void destroy_swapchain()
+	{
+		// Destroy all framebuffers
+		for (const auto& framebuffer : swapFramebuffers) device.destroyFramebuffer(framebuffer);
+
+		// Destroy image views
+		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
+
+		device.destroySwapchainKHR(swapchain);
+	}
+
+	// Swapchain recreation for window resizing
+	void recreate_swapchain()
+	{
+		// Pause application while minimized
+		int width = 0, height = 0;
+		glfwGetFramebufferSize(window, &width, &height);
+		while (width == 0 || height == 0)
+		{
+			glfwGetFramebufferSize(window, &width, &height);
+			glfwWaitEvents();
+		}
+
+		device.waitIdle();
+
+		destroy_swapchain();
+
+		create_swapchain();
+		create_framebuffers();
 	}
 };
 
