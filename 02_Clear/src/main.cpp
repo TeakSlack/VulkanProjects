@@ -14,7 +14,7 @@ const int MAX_FRAMES_IN_FLIGHT = 2; // Max number of frames that can be rendered
 
 auto logger = spdlog::stdout_color_mt("logger");
 
-// Logs error message and quits application.
+// Logs error message and quits application
 void error(std::string message)
 {
 	logger->error("An error has occurred: " + message);
@@ -100,16 +100,17 @@ public:
 	}
 
 private:
+	// Core application objects
 	vk::ClearColorValue clearValue{ 0.0f, 0.0f, 0.0f, 1.0f }; // Clear color for rendering
 
 	GLFWwindow* window; // Handle to the application window
 
-	vk::Instance instance; // Vulkan instance, the communication layer between the client code and Vulkan api
+	vk::Instance instance; // Vulkan instance, the communication layer between the client code and Vulkan API
 	vk::DebugUtilsMessengerEXT debug_messenger;
 	vk::PhysicalDevice physicalDevice;
 	vk::Device device;
 	vk::SurfaceKHR surface;
-	uint32_t presentIdx, graphicsIdx; // Queue indicies
+	uint32_t presentIdx, graphicsIdx;
 	vk::Queue presentQueue, graphicsQueue;
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::Image> swapImages;

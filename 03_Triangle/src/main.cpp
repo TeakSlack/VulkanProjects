@@ -11,10 +11,13 @@
 
 #include "VkBootstrap.h"
 
+// Define how many frames can be processed simultaneously
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
+// Create a color logger using spdlog
 auto logger = spdlog::stdout_color_mt("logger");
 
+// Helper function to log an error and exit the application
 void error(std::string message)
 {
 	logger->error("An error has occurred: " + message);
@@ -27,6 +30,7 @@ public:
 	std::string application_name = "Triangle";
 
 public:
+	// Initialize Vulkan and related resources
 	void init()
 	{
 		create_base_objects();
@@ -37,42 +41,58 @@ public:
 		create_sync_objects();
 	}
 
+	// Run the main render loop
 	void run()
 	{
 		while (!glfwWindowShouldClose(window))
 		{
-			glfwPollEvents();
-			draw_frame();
+			glfwPollEvents(); // Handle window events
+			draw_frame(); // Draw one frame
 		}
 	}
 
+	// Cleanup Vulkan resources in reverse order of initialization
 	void destroy()
 	{
-		device.waitIdle();
+		device.waitIdle(); // Wait until all GPU work is done
+
+		// Destroy synchronization primitives
 		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
 			device.destroySemaphore(renderFinishedSemaphores[i]);
 			device.destroySemaphore(imageAvailableSemaphores[i]);
 			device.destroyFence(inFlightFences[i]);
 		}
+
 		device.destroyCommandPool(commandPool);
+
+		// Destroy all framebuffers
 		for (const auto& framebuffer : swapFramebuffers) device.destroyFramebuffer(framebuffer);
+
+		// Destroy graphics pipeline
 		device.destroyPipeline(graphicsPipeline);
 		device.destroyPipelineLayout(pipelineLayout);
 		device.destroyRenderPass(renderPass);
+
+		// Destroy image views
 		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
+
 		device.destroySwapchainKHR(swapchain);
 		instance.destroySurfaceKHR(surface);
 		device.destroy();
+
 #ifdef DEBUG
+		// Destroy debug messenger only in debug builds
 		vk::DispatchLoaderDynamic dldi(instance, vkGetInstanceProcAddr);
 		instance.destroyDebugUtilsMessengerEXT(debug_messenger, nullptr, dldi);
 #endif
+
 		instance.destroy();
 		glfwDestroyWindow(window);
 	}
 
 private:
+	// Core application objects
 	GLFWwindow* window;
 
 	vk::Instance instance;
@@ -98,6 +118,7 @@ private:
 	uint32_t currentFrame = 0;
 
 private:
+	// Helper to read binary file (e.g., SPIR-V shader)
 	static std::vector<char> read_file(const std::string& fileName)
 	{
 		std::ifstream file(fileName, std::ifstream::ate | std::ifstream::binary);
@@ -118,6 +139,7 @@ private:
 		return buffer;
 	}
 
+	// Create GLFW window and Vulkan surface
 	void create_window()
 	{
 		if (!glfwInit()) exit(EXIT_FAILURE);
@@ -130,20 +152,24 @@ private:
 		if (err != VK_SUCCESS) error("Failed to create window surface");
 	}
 
+	// Create Vulkan device, physical device, logical device, and swapchain
 	void create_base_objects()
 	{
+		// Get the extensions required by GLFW
 		uint32_t glfwCount = 0;
-		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwCount); // Get GLFW's required extensions
-		std::vector<const char*> requiredExtensions(glfwExtensions, glfwExtensions + glfwCount); // Create array of required extensions
+		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwCount);
+		std::vector<const char*> requiredExtensions(glfwExtensions, glfwExtensions + glfwCount);
 
+		// Initialize Vulkan with vk-bootstrap
 		vkb::InstanceBuilder instanceBuilder;
-		instanceBuilder.set_app_name(application_name.c_str());
-		instanceBuilder.set_app_version(VK_MAKE_VERSION(1, 0, 0));
-		instanceBuilder.set_engine_name("No Engine");
-		instanceBuilder.set_engine_version(VK_MAKE_VERSION(1, 0, 0));
-		instanceBuilder.enable_extensions(requiredExtensions);
+		instanceBuilder.set_app_name(application_name.c_str())
+			.set_app_version(VK_MAKE_VERSION(1, 0, 0))
+			.set_engine_name("No Engine")
+			.set_engine_version(VK_MAKE_VERSION(1, 0, 0))
+			.enable_extensions(requiredExtensions);
 
 #ifdef DEBUG
+		// Setup debug messages only in case of debug build
 		instanceBuilder.request_validation_layers();
 		instanceBuilder.use_default_debug_messenger();
 #endif
@@ -153,14 +179,17 @@ private:
 
 		debug_messenger = instanceRet.value().debug_messenger;
 		instance = instanceRet.value().instance;
+
 		create_window();
 
+		// Setup required device extensions
 		std::vector<const char*> requiredDeviceExtensions
 		{
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 			VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME
 		};
 
+		// Enable synchronization2
 		vk::PhysicalDeviceSynchronization2Features synchronization2
 		{
 			VK_TRUE
@@ -169,10 +198,11 @@ private:
 		vk::PhysicalDeviceFeatures features{};
 		features.geometryShader = true;
 
+		// Select a physical device using vk-bootstrap
 		vkb::PhysicalDeviceSelector physDeviceSelector{ instanceRet.value() };
-		physDeviceSelector.add_required_extensions(requiredDeviceExtensions);
-		physDeviceSelector.set_surface(surface);
-		physDeviceSelector.set_required_features(features);
+		physDeviceSelector.add_required_extensions(requiredDeviceExtensions)
+			.set_surface(surface)
+			.set_required_features(features);
 		
 		auto physRet = physDeviceSelector.select();
 		if (!physRet) error("Failed to select physical device (" + physRet.error().message() + ")");
@@ -182,56 +212,48 @@ private:
 		vkb::DeviceBuilder deviceBuilder{ physRet.value() };
 		deviceBuilder.add_pNext(&synchronization2);
 
+		// Create logical device
 		auto devRet = deviceBuilder.build();
 		if (!devRet) error("Failed to create device (" + devRet.error().message() + ")");
-
 		device = devRet.value().device;
 
+		// Retrieve queues
 		auto presentQueueRet = devRet.value().get_queue(vkb::QueueType::present);
 		presentIdx = devRet.value().get_queue_index(vkb::QueueType::present).value();
-		if (!presentQueueRet)
-		{
-			logger->error("Failed to get presentation queue: " + presentQueueRet.error().message());
-			exit(EXIT_FAILURE);
-		}
+		if (!presentQueueRet) error("Failed to get presentation queue: " + presentQueueRet.error().message());
 
 		auto graphicsQueueRet = devRet.value().get_queue(vkb::QueueType::graphics);
 		graphicsIdx = devRet.value().get_queue_index(vkb::QueueType::graphics).value();
-
-		if (!graphicsQueueRet)
-		{
-			logger->error("Failed to get graphics queue: " + graphicsQueueRet.error().message());
-			exit(EXIT_FAILURE);
-		}
+		if (!graphicsQueueRet) error("Failed to get graphics queue: " + graphicsQueueRet.error().message());
 
 		presentQueue = presentQueueRet.value();
 		graphicsQueue = graphicsQueueRet.value();
 
+		// Create swapchain
 		vkb::SwapchainBuilder swapBuilder{ devRet.value() };
-
 		int width, height;
 		glfwGetFramebufferSize(window, &width, &height);
 
-		swapBuilder.use_default_format_selection();
-		swapBuilder.use_default_present_mode_selection();
-		swapBuilder.use_default_image_usage_flags();
-		swapBuilder.set_desired_extent(width, height);
-		swapBuilder.set_image_array_layer_count(1);
-		auto swapRet = swapBuilder.build();
+		swapBuilder.use_default_format_selection()
+			.use_default_present_mode_selection()
+			.use_default_image_usage_flags()
+			.set_desired_extent(width, height)
+			.set_image_array_layer_count(1);
 
+		auto swapRet = swapBuilder.build();
 		if (!swapRet) error("Failed to create swapchain (" + swapRet.error().message() + ")");
+
 		swapchain = swapRet.value().swapchain;
 
-		std::vector<VkImage> _swapImages = swapRet.value().get_images().value();
-		for (const auto image : _swapImages) swapImages.push_back(image);
-
-		std::vector<VkImageView> _swapImageViews = swapRet.value().get_image_views().value();
-		for (const auto imageView : _swapImageViews) swapImageViews.push_back(imageView);
+		// Create swapchain image and views
+		for (const auto image : swapRet.value().get_images().value()) swapImages.push_back(image);
+		for (const auto imageView : swapRet.value().get_image_views().value()) swapImageViews.push_back(imageView);
 
 		swapExtent = swapRet.value().extent;
 		swapFormat = static_cast<vk::Format>(swapRet.value().image_format);
 	}
 
+	// Helper to create shader module from SPIR-V code
 	vk::ShaderModule create_shader_module(std::vector<char>& code)
 	{
 		
@@ -239,29 +261,41 @@ private:
 		return device.createShaderModule(moduleInfo);
 	}
 
+	// Create a basic render pass for presenting images
 	void create_render_pass()
 	{
 		vk::AttachmentDescription colorAttachment(
-			{}, swapFormat, vk::SampleCountFlagBits::e1,
-			vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
-			vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
-			vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR
+			{}, 
+			swapFormat, vk::SampleCountFlagBits::e1,
+			vk::AttachmentLoadOp::eClear, 
+			vk::AttachmentStoreOp::eStore,
+			vk::AttachmentLoadOp::eDontCare, 
+			vk::AttachmentStoreOp::eDontCare,
+			vk::ImageLayout::eUndefined, 
+			vk::ImageLayout::ePresentSrcKHR
 		);
 
 		vk::AttachmentReference colorAttachmentRef(0, vk::ImageLayout::eAttachmentOptimal);
 
 		vk::SubpassDescription subpass(
-			{}, vk::PipelineBindPoint::eGraphics,
-			nullptr, colorAttachmentRef, 
-			nullptr, nullptr, 
+			{}, 
+			vk::PipelineBindPoint::eGraphics,
+			nullptr, 
+			colorAttachmentRef, 
+			nullptr, 
+			nullptr, 
 			nullptr
 		);
 
+		// Make sure color attachment is ready before/after the render pass
 		vk::SubpassDependency dependency(
-			VK_SUBPASS_EXTERNAL, 0,
+			VK_SUBPASS_EXTERNAL, 
+			0,
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,
-			{}, {}, {}
+			{}, 
+			{}, 
+			{}
 		);
 
 		vk::RenderPassCreateInfo renderPassInfo({}, colorAttachment, subpass, dependency);
@@ -269,6 +303,7 @@ private:
 		renderPass = device.createRenderPass(renderPassInfo);
 	}
 
+	// Create graphics pipeline including shaders, pipeline layout, and fixed function stages
 	void create_graphics_pipeline()
 	{
 		auto vertShader = read_file("src/shader/vert.spv");
@@ -277,18 +312,22 @@ private:
 		vk::ShaderModule vertModule = create_shader_module(vertShader);
 		vk::ShaderModule fragModule = create_shader_module(fragShader);
 
+		// Shader stage creation
 		vk::PipelineShaderStageCreateInfo vertStageInfo({}, vk::ShaderStageFlagBits::eVertex, vertModule, "main");
 		vk::PipelineShaderStageCreateInfo fragStageInfo({}, vk::ShaderStageFlagBits::eFragment, fragModule, "main");
 
 		std::vector<vk::PipelineShaderStageCreateInfo> shaderStages { vertStageInfo, fragStageInfo };
 
+		// Vertex input: no vertices used (defined in vertex shader)	
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 
+		// Input assembly: draw triangle from vertices
 		vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo({}, vk::PrimitiveTopology::eTriangleStrip, vk::False);
 
+		// Viewport and scissor
 		vk::Viewport viewport(0.0f, 0.0f, (float)swapExtent.width, (float)swapExtent.height, 0.0f, 1.0f);
-
 		vk::Rect2D scissor({}, swapExtent);
+		vk::PipelineViewportStateCreateInfo viewportStateInfo({}, viewport, scissor);
 
 		std::vector<vk::DynamicState> dynamicStates
 		{
@@ -298,34 +337,59 @@ private:
 
 		vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, dynamicStates);
 
-		vk::PipelineViewportStateCreateInfo viewportStateInfo({}, viewport, scissor);
-
-		vk::PipelineRasterizationStateCreateInfo rasterizerInfo({}, vk::False, vk::False, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eClockwise, vk::False);
+		// Rasterizer
+		vk::PipelineRasterizationStateCreateInfo rasterizerInfo(
+			{}, 
+			vk::False, 
+			vk::False, 
+			vk::PolygonMode::eFill, 
+			vk::CullModeFlagBits::eBack, 
+			vk::FrontFace::eClockwise, 
+			vk::False
+		);
 		rasterizerInfo.lineWidth = 1.0f;
 
+		// Multisampling
 		vk::PipelineMultisampleStateCreateInfo multisamplingInfo{};
 
+		// Color blending
 		vk::PipelineColorBlendAttachmentState colorBlendAttachmentInfo{};
 		colorBlendAttachmentInfo.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 		colorBlendAttachmentInfo.blendEnable = vk::False;
 
 		vk::PipelineColorBlendStateCreateInfo colorBlendInfo({}, vk::False, vk::LogicOp::eNoOp, colorBlendAttachmentInfo, {});
 
+		// Pipeline info: no descriptors or push constants
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-
 		pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
 
-		vk::GraphicsPipelineCreateInfo pipelineInfo({}, shaderStages, &vertexInputInfo, &inputAssemblyInfo, {}, &viewportStateInfo, &rasterizerInfo, &multisamplingInfo, {}, &colorBlendInfo, &dynamicStateInfo, pipelineLayout, renderPass);
+		vk::GraphicsPipelineCreateInfo pipelineInfo(
+			{}, 
+			shaderStages, 
+			&vertexInputInfo, 
+			&inputAssemblyInfo, 
+			{}, 
+			&viewportStateInfo, 
+			&rasterizerInfo, 
+			&multisamplingInfo, 
+			{}, 
+			&colorBlendInfo, 
+			&dynamicStateInfo, 
+			pipelineLayout, 
+			renderPass
+		);
 
 		vk::ResultValue<vk::Pipeline> result = device.createGraphicsPipeline(VK_NULL_HANDLE, pipelineInfo);
 		if (result.result != vk::Result::eSuccess) error("Failed to create graphics pipeline!");
 
 		graphicsPipeline = result.value;
 
+		// Cleanup shader modules after pipeline creation
 		device.destroyShaderModule(vertModule);
 		device.destroyShaderModule(fragModule);
 	}
 
+	// Create framebuffers for each swapchain image
 	void create_framebuffers()
 	{
 		swapFramebuffers.resize(swapImageViews.size());
@@ -343,6 +407,7 @@ private:
 		}
 	}
 
+	// Create command pool and allocate two command buffers per frame
 	void create_command_objects()
 	{
 		vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIdx);
@@ -354,6 +419,7 @@ private:
 		commandBuffers = device.allocateCommandBuffers(bufferInfo);
 	}
 
+	// Record command buffer for each frame
 	void record_command_buffer(vk::CommandBuffer commandBuffer, uint32_t imageIdx)
 	{
 		vk::CommandBufferBeginInfo beginInfo{};
@@ -376,6 +442,7 @@ private:
 		commandBuffer.end();
 	}
 
+	// Create fences and semaphores for synchronization
 	void create_sync_objects()
 	{
 		vk::SemaphoreCreateInfo semaphoreInfo{};
@@ -393,6 +460,7 @@ private:
 		}
 	}
 	
+	// Main rendering logic per frame
 	void draw_frame()
 	{
 		auto res1 = device.waitForFences(inFlightFences[currentFrame], vk::True, UINT64_MAX);
@@ -428,6 +496,7 @@ private:
 	}
 };
 
+// Application execution and logic
 int main()
 {
 	logger->set_pattern("[%H:%M:%S %^%l%$]: %v"); // [Hour:Minute:Second Level]: Message
