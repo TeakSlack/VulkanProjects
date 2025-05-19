@@ -152,7 +152,7 @@ private:
 		if (err != VK_SUCCESS) error("Failed to create window surface");
 	}
 
-	// Callback for framebuffer resize in case of device driver not sending resize signal (vk::Result::eOutOfDateKHR)
+	// Callback for framebuffer resize in case of device driver not sending resize signal (vk::Result::eErrorOutOfDateKHR)
 	static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 	{
 		auto app = reinterpret_cast<Triangle*>(glfwGetWindowUserPointer(window));
@@ -487,7 +487,7 @@ private:
 			recreate_swapchain();
 			return;
 		}
-		 else if (res2.result != vk::Result::eSuccess && res2.result != vk::Result::eSuboptimalKHR) error("Failed to acquire next image.");
+		else if (res2.result != vk::Result::eSuccess && res2.result != vk::Result::eSuboptimalKHR) error("Failed to acquire next image.");
 		uint32_t imageIdx = res2.value;
 
 		// Only reset fences if we are submitting work with it

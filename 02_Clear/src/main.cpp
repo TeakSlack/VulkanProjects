@@ -17,7 +17,7 @@ auto logger = spdlog::stdout_color_mt("logger");
 // Logs error message and quits application
 void error(std::string message)
 {
-	logger->error("An error has occurred: " + message);
+	logger->error(message);
 	exit(EXIT_FAILURE);
 }
 
@@ -56,7 +56,8 @@ public:
 	// Initialize Vulkan and related resources
 	void init()
 	{
-		create_base_objects(); // Create Vulkan instance, physical and logical device, queues, swapchain, and window
+		create_base_objects(); // Create Vulkan instance, physical and logical device, queues, and window
+		create_swapchain();
 		create_command_objects(); // Create command pool and buffers
 		create_sync_objects(); // Create synchronization primitives
 	}
@@ -122,6 +123,7 @@ private:
 	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
 	std::vector<vk::Fence> inFlightFences;
 	uint32_t currentFrame = 0;
+	bool framebufferResized = false;
 
 private:
 	// Create application window
@@ -133,9 +135,19 @@ private:
 		window = glfwCreateWindow(1280, 720, application_name.c_str(), NULL, NULL);
 		if (!window) error("Failed to create window!");
 
+		// Helper for GLFW to get 'this' pointer
+		glfwSetWindowUserPointer(window, this);
+		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
 		// Create Vulkan surface for window
 		VkResult err = glfwCreateWindowSurface(instance, window, NULL, reinterpret_cast<VkSurfaceKHR*>(&surface));
 		if (err != VK_SUCCESS) error("Failed to create window surface");
+	}
+
+	static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+	{
+		auto app = reinterpret_cast<Clear*>(glfwGetWindowUserPointer(window));
+		app->framebufferResized = true;
 	}
 
 	// Create Vulkan instance, physical and logical device, queues, swapchain, and window
@@ -223,29 +235,33 @@ private:
 
 		presentQueue = presentQueueRet.value();
 		graphicsQueue = graphicsQueueRet.value();
+	}
 
+	// Create swapchain, images, and image view
+	void create_swapchain()
+	{
 		// Build the swapchain for presentation
-		vkb::SwapchainBuilder swapBuilder{ devRet.value() };
+		vkb::SwapchainBuilder swapBuilder{ physicalDevice, device, surface, graphicsIdx, presentIdx };
 
 		int width, height;
 		glfwGetFramebufferSize(window, &width, &height);
 
-		swapBuilder.use_default_format_selection();
-		swapBuilder.use_default_present_mode_selection();
-		swapBuilder.add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-		swapBuilder.set_desired_extent(width, height);
-		swapBuilder.set_image_array_layer_count(1);
-		auto swapRet = swapBuilder.build();
+		swapBuilder.use_default_format_selection()
+			.use_default_present_mode_selection()
+			.add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+			.set_desired_extent(width, height)
+			.set_image_array_layer_count(1);
 
+		auto swapRet = swapBuilder.build();
 		if (!swapRet) error("Failed to create swapchain (" + swapRet.error().message() + ")");
+
 		swapchain = swapRet.value().swapchain;
 
-		// Get swapchain images and imageviews
-		std::vector<VkImage> _swapImages = swapRet.value().get_images().value();
-		for (const auto image : _swapImages) swapImages.push_back(image);
-
-		std::vector<VkImageView> _swapImageViews = swapRet.value().get_image_views().value();
-		for (const auto imageView : _swapImageViews) swapImageViews.push_back(imageView);
+		// Get swapchain images and image views
+		swapImages.clear();
+		for (const auto image : swapRet.value().get_images().value()) swapImages.push_back(image);
+		swapImageViews.clear();
+		for (const auto imageView : swapRet.value().get_image_views().value()) swapImageViews.push_back(imageView);
 
 		// Get swapchain extent and format
 		swapExtent = swapRet.value().extent;
@@ -270,8 +286,9 @@ private:
 	{
 		// Begin recording commands into the command buffer
 		vk::CommandBufferBeginInfo beginInfo{};
-		beginInfo.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse;
+
 		// Allows the command buffer to be resubmitted while it is still being executed
+		beginInfo.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse;
 
 		// Define the image subresource range that will be affected by the commands
 		vk::ImageSubresourceRange subresourceRange(
@@ -376,15 +393,21 @@ private:
 		// Wait for the current frame's fence to ensure the GPU has finished processing it
 		auto res1 = device.waitForFences(inFlightFences[currentFrame], vk::True, UINT64_MAX);
 
-		// Reset the fence for the current frame to prepare for its next use
-		device.resetFences(inFlightFences[currentFrame]);
+		if (res1 != vk::Result::eSuccess) error("Fence operation failed!");
 
 		// Acquire the index of the next available swapchain image
 		auto res2 = device.acquireNextImageKHR(swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], {});
 
-		// Handle errors during image acquisition
-		if (res1 != vk::Result::eSuccess || res2.result != vk::Result::eSuccess)
-			error("Failed to acquire next image.");
+		// Recreate swapchain if out of date, handle errors during image acquisition
+		if (res2.result == vk::Result::eErrorOutOfDateKHR)
+		{
+			recreate_swapchain();
+			return;
+		}
+		else if (res2.result != vk::Result::eSuccess && res2.result != vk::Result::eSuboptimalKHR) error("Failed to acquire next swapchain image.");
+
+		// Reset the fence for the current frame to prepare for its next use only if we are submitting work (deadlock prevention)
+		device.resetFences(inFlightFences[currentFrame]);
 
 		// Extract the index of the acquired image
 		uint32_t imageIdx = res2.value;
@@ -417,11 +440,46 @@ private:
 		vk::PresentInfoKHR presentInfo(signalSemaphores, swapchain, imageIdx);
 
 		// Present the rendered image to the screen
-		if (graphicsQueue.presentKHR(presentInfo) != vk::Result::eSuccess)
-			error("Failed to present!");
+		auto res3 = graphicsQueue.presentKHR(presentInfo);
+
+		// Recreate swapchain if needed
+		if (res3 == vk::Result::eErrorOutOfDateKHR || res3 == vk::Result::eSuboptimalKHR || framebufferResized)
+		{
+			framebufferResized = false;
+			recreate_swapchain();
+		}
+		else if (res3 != vk::Result::eSuccess) error("Failed to present!");
 
 		// Move to the next frame by updating the current frame index
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+	}
+
+	// Cleanup swapchain objects for application exit or swapchain recreation
+	void destroy_swapchain()
+	{
+		// Destroy image views
+		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
+
+		device.destroySwapchainKHR(swapchain);
+	}
+
+	// Swapchain recreation for window resizing
+	void recreate_swapchain()
+	{
+		// Pause application while minimized
+		int width = 0, height = 0;
+		glfwGetFramebufferSize(window, &width, &height);
+		while (width == 0 || height == 0)
+		{
+			glfwGetFramebufferSize(window, &width, &height);
+			glfwWaitEvents();
+		}
+
+		device.waitIdle();
+
+		destroy_swapchain();
+
+		create_swapchain();
 	}
 };
 
