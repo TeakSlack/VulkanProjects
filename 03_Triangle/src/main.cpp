@@ -89,20 +89,20 @@ public:
 
 private:
 	// Core application objects
-	GLFWwindow* window;
+	GLFWwindow* window = nullptr;
 
 	vk::Instance instance;
 	vk::DebugUtilsMessengerEXT debug_messenger;
 	vk::PhysicalDevice physicalDevice;
 	vk::Device device;
 	vk::SurfaceKHR surface;
-	uint32_t presentIdx, graphicsIdx;
+	uint32_t presentIdx = 0, graphicsIdx = 0;
 	vk::Queue presentQueue, graphicsQueue;
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::Image> swapImages;
 	std::vector<vk::ImageView> swapImageViews;
 	vk::Extent2D swapExtent;
-	vk::Format swapFormat;
+	vk::Format swapFormat{};
 	vk::RenderPass renderPass;
 	vk::PipelineLayout pipelineLayout;
 	vk::Pipeline graphicsPipeline;
@@ -427,7 +427,7 @@ private:
 
 		commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, commandBuffers.size());
+		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(commandBuffers.size()));
 		commandBuffers = device.allocateCommandBuffers(bufferInfo);
 	}
 
@@ -500,9 +500,9 @@ private:
 		const std::vector<vk::Semaphore> signalSemaphores(1,renderFinishedSemaphores[currentFrame]);
 		const std::vector<vk::PipelineStageFlags> waitStages(1, vk::PipelineStageFlagBits::eColorAttachmentOutput);
 		vk::SubmitInfo submitInfo{};
-		submitInfo.setWaitSemaphoreCount(waitSemaphores.size());
+		submitInfo.setWaitSemaphoreCount(static_cast<uint32_t>(waitSemaphores.size()));
 		submitInfo.setPWaitSemaphores(waitSemaphores.data());
-		submitInfo.setSignalSemaphoreCount(signalSemaphores.size());
+		submitInfo.setSignalSemaphoreCount(static_cast<uint32_t>(signalSemaphores.size()));
 		submitInfo.setPSignalSemaphores(signalSemaphores.data());
 		submitInfo.setPWaitDstStageMask(waitStages.data());
 		submitInfo.setCommandBufferCount(1);

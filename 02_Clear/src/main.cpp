@@ -24,9 +24,9 @@ void error(std::string message)
 // Converts from HSV to RGB colorspace for color-shift animation
 vk::ClearColorValue rbgToHsv(float h, float s, float v)
 {
-	float r, g, b;
+	float r = 0.0f, g = 0.0f, b = 0.0f;
 
-	int i = std::floor(h * 6);
+	int i = static_cast<int>(std::floor(h * 6));
 	float f = h * 6 - i;
 	float p = v * (1 - s);
 	float q = v * (1 - f * s);
@@ -104,20 +104,20 @@ private:
 	// Core application objects
 	vk::ClearColorValue clearValue{ 0.0f, 0.0f, 0.0f, 1.0f }; // Clear color for rendering
 
-	GLFWwindow* window; // Handle to the application window
+	GLFWwindow* window = nullptr; // Handle to the application window
 
 	vk::Instance instance; // Vulkan instance, the communication layer between the client code and Vulkan API
 	vk::DebugUtilsMessengerEXT debug_messenger;
 	vk::PhysicalDevice physicalDevice;
 	vk::Device device;
 	vk::SurfaceKHR surface;
-	uint32_t presentIdx, graphicsIdx;
+	uint32_t presentIdx = 0, graphicsIdx = 0;
 	vk::Queue presentQueue, graphicsQueue;
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::Image> swapImages;
 	std::vector<vk::ImageView> swapImageViews;
 	vk::Extent2D swapExtent;
-	vk::Format swapFormat;
+	vk::Format swapFormat{};
 	vk::CommandPool commandPool;
 	std::vector<vk::CommandBuffer> commandBuffers;
 	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
@@ -277,7 +277,7 @@ private:
 		// Create command buffer for every frame in flight
 		commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, commandBuffers.size());
+		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(commandBuffers.size()));
 		commandBuffers = device.allocateCommandBuffers(bufferInfo);
 	}
 
@@ -425,9 +425,9 @@ private:
 
 		// Populate the submit info structure with synchronization and command buffer details
 		vk::SubmitInfo submitInfo{};
-		submitInfo.setWaitSemaphoreCount(waitSemaphores.size());      // Semaphores to wait on before executing
+		submitInfo.setWaitSemaphoreCount(static_cast<uint32_t>(waitSemaphores.size()));      // Semaphores to wait on before executing
 		submitInfo.setPWaitSemaphores(waitSemaphores.data());
-		submitInfo.setSignalSemaphoreCount(signalSemaphores.size()); // Semaphores to signal when execution finishes
+		submitInfo.setSignalSemaphoreCount(static_cast<uint32_t>(signalSemaphores.size())); // Semaphores to signal when execution finishes
 		submitInfo.setPSignalSemaphores(signalSemaphores.data());
 		submitInfo.setPWaitDstStageMask(waitStages.data());          // Specify the pipeline stages to wait at
 		submitInfo.setCommandBufferCount(1);                         // Submit only one command buffer
