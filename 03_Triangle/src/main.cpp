@@ -172,7 +172,7 @@ private:
 		instanceBuilder.set_app_name(application_name.c_str())
 			.set_app_version(VK_MAKE_VERSION(1, 0, 0))
 			.set_engine_name("No Engine")
-			.set_engine_version(VK_MAKE_VERSION(1, 0, 0))
+			.set_engine_version(VK_MAKE_VERSION(0, 0, 0)) // 0.0.0 for no engine
 			.enable_extensions(requiredExtensions);
 
 #ifdef DEBUG
@@ -196,7 +196,7 @@ private:
 			VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME
 		};
 
-		// Enable synchronization2
+		// Enable synchronization2 (specific to Vulkan 1.3)
 		vk::PhysicalDeviceSynchronization2Features synchronization2
 		{
 			VK_TRUE
@@ -255,10 +255,8 @@ private:
 
 		swapchain = swapRet.value().swapchain;
 
-		// Create swapchain image and views, clearing previous entries (if any)
-		swapImages.clear();
+		// Create swapchain image and views
 		for (const auto image : swapRet.value().get_images().value()) swapImages.push_back(image);
-		swapImageViews.clear();
 		for (const auto imageView : swapRet.value().get_image_views().value()) swapImageViews.push_back(imageView);
 
 		swapExtent = swapRet.value().extent;
@@ -277,39 +275,45 @@ private:
 	void create_render_pass()
 	{
 		vk::AttachmentDescription colorAttachment(
-			{}, 
-			swapFormat, vk::SampleCountFlagBits::e1,
-			vk::AttachmentLoadOp::eClear, 
-			vk::AttachmentStoreOp::eStore,
-			vk::AttachmentLoadOp::eDontCare, 
-			vk::AttachmentStoreOp::eDontCare,
-			vk::ImageLayout::eUndefined, 
-			vk::ImageLayout::ePresentSrcKHR
+			{},									// No flags
+			swapFormat,							// Use defined swapchain format
+			vk::SampleCountFlagBits::e1,		// One sample per pixel (no multisampling)
+			vk::AttachmentLoadOp::eClear,		// Clear previous contents within render area
+			vk::AttachmentStoreOp::eStore,		// Save contents generated during render pass to memory
+			vk::AttachmentLoadOp::eDontCare,	// No stencil, don't care
+			vk::AttachmentStoreOp::eDontCare,	// No stencil, don't care
+			vk::ImageLayout::eUndefined,		// Don't change attachment image subresource format upon render pass start
+			vk::ImageLayout::ePresentSrcKHR		// Set format to be presented to screen
 		);
 
+		// Reference to a color attachment at index 0, specifying the layout it will be in during the subpass.
+		// 'eAttachmentOptimal' ensures the layout is optimal for color attachment operations.
 		vk::AttachmentReference colorAttachmentRef(0, vk::ImageLayout::eAttachmentOptimal);
 
+		// Define a subpass within a render pass. This subpass will use the color attachment defined above.
 		vk::SubpassDescription subpass(
-			{}, 
-			vk::PipelineBindPoint::eGraphics,
-			nullptr, 
-			colorAttachmentRef, 
-			nullptr, 
-			nullptr, 
-			nullptr
+			{},									// No special flags for this subpass
+			vk::PipelineBindPoint::eGraphics,	// This subpass will be bound to the graphics pipeline
+			nullptr,							// No input attachments (used when reading from previous passes)
+			colorAttachmentRef,					// One color attachment (our colorAttachmentRef)
+			nullptr,							// No resolve attachments (used with multisampling)
+			nullptr,							// No depth/stencil attachment
+			nullptr								// No preserved attachments (attachments not used in this subpass but used in others)
 		);
 
-		// Make sure color attachment is ready before/after the render pass
+		// Create a dependency to ensure proper synchronization between external operations and this subpass.
+		// This ensures that the color attachment is ready before the subpass starts and is properly handled after it ends.
 		vk::SubpassDependency dependency(
-			VK_SUBPASS_EXTERNAL, 
-			0,
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,
-			{}, 
-			{}, 
-			{}
+			VK_SUBPASS_EXTERNAL,								// Source is external to the render pass (e.g., previous frame, presentation engine)
+			0,													// Destination is subpass 0 (our subpass)
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,	// Wait for operations that write to color attachments to finish
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,	// Subpass will perform color attachment output
+			{},													// No specific access mask for source (could be more specific for strict sync)
+			{},													// No specific access mask for destination
+			{}													// No dependency flags
 		);
 
+		// Define render pass info with color attachment, subpasses, and dependencies
 		vk::RenderPassCreateInfo renderPassInfo({}, colorAttachment, subpass, dependency);
 
 		renderPass = device.createRenderPass(renderPassInfo);
@@ -349,16 +353,18 @@ private:
 
 		vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, dynamicStates);
 
-		// Rasterizer
+		// Configure rasterization stage of the graphics pipeline
 		vk::PipelineRasterizationStateCreateInfo rasterizerInfo(
-			{}, 
-			vk::False, 
-			vk::False, 
-			vk::PolygonMode::eFill, 
-			vk::CullModeFlagBits::eBack, 
-			vk::FrontFace::eClockwise, 
-			vk::False
+			{},										// No special flags
+			vk::False,								// Disable depth clamping (clipping instead of clamping fragments outside near/far planes)
+			vk::False,								// Disable rasterizer discard (enables actual rasterization)
+			vk::PolygonMode::eFill,					// Fill polygons (can also use eLine or ePoint for wireframe/point rendering)
+			vk::CullModeFlagBits::eBack,			// Cull back-facing polygons to improve performance
+			vk::FrontFace::eClockwise,				// Clockwise vertex winding is considered front-facing
+			vk::False								// Disable depth bias (used for things like shadow mapping)
 		);
+
+		// Set the width of lines when rendering in line mode (must be 1.0 unless wide lines are enabled via GPU features)
 		rasterizerInfo.lineWidth = 1.0f;
 
 		// Multisampling
@@ -375,21 +381,24 @@ private:
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
 		pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
 
+		// Create graphics pipeline configuration with various pipeline stages and fixed-function states
 		vk::GraphicsPipelineCreateInfo pipelineInfo(
-			{}, 
-			shaderStages, 
-			&vertexInputInfo, 
-			&inputAssemblyInfo, 
-			{}, 
-			&viewportStateInfo, 
-			&rasterizerInfo, 
-			&multisamplingInfo, 
-			{}, 
-			&colorBlendInfo, 
-			&dynamicStateInfo, 
-			pipelineLayout, 
-			renderPass
+			{},										// No special flags
+			shaderStages,							// Array of shader stages (e.g., vertex and fragment shaders)
+			&vertexInputInfo,						// Pointer to vertex input state (binding and attribute descriptions)
+			&inputAssemblyInfo,						// Pointer to input assembly state (e.g., topology like triangle list)
+			{},										// No tessellation state (not used unless tessellation shaders are enabled)
+			&viewportStateInfo,						// Pointer to viewport and scissor rectangle state
+			&rasterizerInfo,						// Pointer to rasterization state (polygon mode, culling, front face, etc.)
+			&multisamplingInfo,						// Pointer to multisample state (anti-aliasing configuration)
+			{},										// No depth/stencil state (not used here)
+			&colorBlendInfo,						// Pointer to color blending state (blend operations per attachment)
+			&dynamicStateInfo,						// Pointer to dynamic state (e.g., dynamic viewport/scissor)
+			pipelineLayout,							// Pipeline layout (descriptor sets and push constants layout)
+			renderPass								// Render pass this pipeline will be used with
+			// subpass index (optional) and base pipeline info (optional) not provided here
 		);
+
 
 		vk::ResultValue<vk::Pipeline> result = device.createGraphicsPipeline(VK_NULL_HANDLE, pipelineInfo);
 		if (result.result != vk::Result::eSuccess) error("Failed to create graphics pipeline!");
@@ -499,14 +508,32 @@ private:
 		const std::vector<vk::Semaphore> waitSemaphores(1, imageAvailableSemaphores[currentFrame]);
 		const std::vector<vk::Semaphore> signalSemaphores(1,renderFinishedSemaphores[currentFrame]);
 		const std::vector<vk::PipelineStageFlags> waitStages(1, vk::PipelineStageFlagBits::eColorAttachmentOutput);
+
+		// Structure describing how command buffers should be submitted to a queue
 		vk::SubmitInfo submitInfo{};
+
+		// Number of semaphores to wait on before executing the command buffer
 		submitInfo.setWaitSemaphoreCount(static_cast<uint32_t>(waitSemaphores.size()));
+
+		// Pointer to the array of semaphores that must be signaled before this submission begins
 		submitInfo.setPWaitSemaphores(waitSemaphores.data());
+
+		// Number of semaphores to signal once the command buffer has finished executing
 		submitInfo.setSignalSemaphoreCount(static_cast<uint32_t>(signalSemaphores.size()));
+
+		// Pointer to the array of semaphores to signal after command buffer execution
 		submitInfo.setPSignalSemaphores(signalSemaphores.data());
+
+		// Array of pipeline stage flags indicating the stages to wait at for each corresponding wait semaphore
 		submitInfo.setPWaitDstStageMask(waitStages.data());
+
+		// Number of command buffers to submit (just one in this case)
 		submitInfo.setCommandBufferCount(1);
+
+		// Pointer to the command buffer to execute (specific to the current frame)
 		submitInfo.setPCommandBuffers(&commandBuffers[currentFrame]);
+
+		// Submit the submit info
 		graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
 
 		vk::PresentInfoKHR presentInfo(signalSemaphores, swapchain, imageIdx);
@@ -531,6 +558,10 @@ private:
 
 		// Destroy image views
 		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
+		swapImageViews.clear();
+
+		// Clear images (destroyed by 'destroySwapchainKHR')
+		swapImages.clear();
 
 		device.destroySwapchainKHR(swapchain);
 	}
@@ -549,6 +580,7 @@ private:
 
 		device.waitIdle();
 
+		// Destroy previous swapchain before recreation
 		destroy_swapchain();
 
 		create_swapchain();
