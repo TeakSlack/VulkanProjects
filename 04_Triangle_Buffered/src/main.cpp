@@ -24,10 +24,10 @@ void error(std::string message)
 	exit(EXIT_FAILURE);
 }
 
-class Triangle
+class Triangle_Unbuffered
 {
 public:
-	std::string application_name = "Triangle";
+	std::string application_name = "Triangle (Unbuffered)";
 
 public:
 	// Initialize Vulkan and related resources
@@ -142,7 +142,7 @@ private:
 		if (!glfwInit()) exit(EXIT_FAILURE);
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		window = glfwCreateWindow(1280, 720, "Triangle", NULL, NULL);
+		window = glfwCreateWindow(1280, 720, "Triangle_Unbuffered", NULL, NULL);
 		if (!window) error("Failed to create window!");
 
 		glfwSetWindowUserPointer(window, this);
@@ -155,7 +155,7 @@ private:
 	// Callback for framebuffer resize in case of device driver not sending resize signal (vk::Result::eErrorOutOfDateKHR)
 	static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 	{
-		auto app = reinterpret_cast<Triangle*>(glfwGetWindowUserPointer(window));
+		auto app = reinterpret_cast<Triangle_Unbuffered*>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
 	}
 
@@ -337,7 +337,7 @@ private:
 		// Vertex input: no vertices used (defined in vertex shader)	
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 
-		// Input assembly: draw triangle from vertices
+		// Input assembly: draw Triangle_Unbuffered from vertices
 		vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo({}, vk::PrimitiveTopology::eTriangleStrip, vk::False);
 
 		// Viewport and scissor
@@ -386,7 +386,7 @@ private:
 			{},										// No special flags
 			shaderStages,							// Array of shader stages (e.g., vertex and fragment shaders)
 			&vertexInputInfo,						// Pointer to vertex input state (binding and attribute descriptions)
-			&inputAssemblyInfo,						// Pointer to input assembly state (e.g., topology like triangle list)
+			&inputAssemblyInfo,						// Pointer to input assembly state (e.g., topology like Triangle_Unbuffered list)
 			{},										// No tessellation state (not used unless tessellation shaders are enabled)
 			&viewportStateInfo,						// Pointer to viewport and scissor rectangle state
 			&rasterizerInfo,						// Pointer to rasterization state (polygon mode, culling, front face, etc.)
@@ -595,7 +595,7 @@ int main()
 
 	try
 	{
-		Triangle app;
+		Triangle_Unbuffered app;
 
 		app.init();
 		app.run();

@@ -1,4 +1,4 @@
-project "03_Triangle"
+project "03_Triangle_Unbuffered"
         kind "ConsoleApp"
         language "C++"
         cppdialect "C++20"
