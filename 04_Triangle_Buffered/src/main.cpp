@@ -3,6 +3,7 @@
 #include <vector>
 #include <fstream>
 #include <unordered_set>
+#include <array>
 
 #include <vulkan/vulkan.hpp>
 #include <spdlog/spdlog.h>
@@ -12,18 +13,48 @@
 
 #include "VkBootstrap.h"
 
-// Define how many frames can be processed simultaneously
-const int MAX_FRAMES_IN_FLIGHT = 2;
-
 // Create a color logger using spdlog
 auto logger = spdlog::stdout_color_mt("logger");
 
-// Helper function to log an error and exit the application
-void error(std::string message)
+// Basic vertex
+struct Vertex
 {
-	logger->error("An error has occurred: " + message);
-	exit(EXIT_FAILURE);
-}
+	glm::vec2 pos;
+	glm::vec3 color;
+
+	// Defines how the data is passed to the vertex shader
+	static vk::VertexInputBindingDescription get_binding_description()
+	{
+		// Defines the rate to load data from memory
+		vk::VertexInputBindingDescription bindingDescription(
+			0,								// Binding: only one--all per-vertex data is in one array
+			sizeof(Vertex),					// Stride: number of bytes from one entry to the next
+			vk::VertexInputRate::eVertex	// Input rate: either vertex or instance for instanced rendering
+		);
+
+		return bindingDescription;
+	}
+
+	// Describes how to retrieve vertex attribute from a chunk of vertex data
+	static std::array<vk::VertexInputAttributeDescription, 2> get_attribute_descriptions()
+	{
+		std::array<vk::VertexInputAttributeDescription, 2> attributeDescriptions{};
+
+		// For pos (vec2)
+		attributeDescriptions[0].binding = 0;							// Which binding does this come from?
+		attributeDescriptions[0].location = 0;							// References (location = 0) in vtex shader
+		attributeDescriptions[0].format = vk::Format::eR32G32Sfloat;	// Type of data for attribute, vec2, specified using same enum as colors
+		attributeDescriptions[0].offset = offsetof(Vertex, pos);		// Specifies number of bytes since start of per-vertex data
+
+		// For color (vec3)
+		attributeDescriptions[1].binding = 0;
+		attributeDescriptions[1].location = 1;
+		attributeDescriptions[1].format = vk::Format::eR32G32B32Sfloat;
+		attributeDescriptions[1].offset = offsetof(Vertex, color);
+
+		return attributeDescriptions;
+	}
+};
 
 class Triangle_Unbuffered
 {
@@ -34,6 +65,8 @@ public:
 	// Initialize Vulkan and related resources
 	void init()
 	{
+		logger->set_pattern("[%H:%M:%S %^%l%$]: %v"); // [Hour:Minute:Second Level]: Message
+
 		create_base_objects();
 		create_swapchain();
 		create_render_pass();
@@ -88,9 +121,30 @@ public:
 		glfwDestroyWindow(window);
 	}
 
+	// Helper function to log an error and exit the application
+	void error(std::string message)
+	{
+		logger->error("An error has occurred: " + message);
+		exit(EXIT_FAILURE);
+	}
+
 private:
 	// Core application objects
 	GLFWwindow* window = nullptr;
+
+	// Define how many frames can be processed simultaneously
+	const int MAX_FRAMES_IN_FLIGHT = 2;
+	uint32_t currentFrame = 0;
+	bool framebufferResized = false;
+
+	// Vertex data
+	const std::vector<Vertex> vertices =
+	{
+		{ {  0.0f,  0.5f }, { 1.0f, 0.0f, 0.0f } },
+		{ {  0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f } },
+		{ { -0.5f,  0.5f }, { 0.0f, 0.0f, 1.0f } }
+	};
+
 
 	vk::Instance instance;
 	vk::DebugUtilsMessengerEXT debug_messenger;
@@ -112,8 +166,6 @@ private:
 	std::vector<vk::CommandBuffer> commandBuffers;
 	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
 	std::vector<vk::Fence> inFlightFences;
-	uint32_t currentFrame = 0;
-	bool framebufferResized = false;
 
 private:
 	// Helper to read binary file (e.g., SPIR-V shader)
@@ -335,10 +387,17 @@ private:
 
 		std::vector<vk::PipelineShaderStageCreateInfo> shaderStages { vertStageInfo, fragStageInfo };
 
-		// Vertex input: no vertices used (defined in vertex shader)	
-		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+		// Vertex input: tell Vulkan how to interpret vertex input data passed to vertex shader
+		auto bindingDescription = Vertex::get_binding_description();
+		auto attributeDescriptions = Vertex::get_attribute_descriptions();
 
-		// Input assembly: draw Triangle_Unbuffered from vertices
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo(
+			{},						// No special flags
+			bindingDescription,		// Binding description
+			attributeDescriptions	// Attribute descriptions (position and color)
+		);
+
+		// Input assembly: draw triangle from vertices
 		vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo({}, vk::PrimitiveTopology::eTriangleStrip, vk::False);
 
 		// Viewport and scissor
@@ -592,19 +651,17 @@ private:
 // Application execution and logic
 int main()
 {
-	logger->set_pattern("[%H:%M:%S %^%l%$]: %v"); // [Hour:Minute:Second Level]: Message
+	Triangle_Unbuffered app;
 
 	try
 	{
-		Triangle_Unbuffered app;
-
 		app.init();
 		app.run();
 		app.destroy();
 	}
 	catch (const std::exception& e)
 	{
-		logger->error(e.what());
+		app.error(e.what());
 	}
 
 	return EXIT_SUCCESS;
