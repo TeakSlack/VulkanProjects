@@ -56,16 +56,17 @@ struct Vertex
 	}
 };
 
-class Triangle_Unbuffered
+class Triangle_Buffered
 {
 public:
-	std::string application_name = "Triangle (Unbuffered)";
+	std::string application_name = "Triangle (Buffered)";
 
 public:
 	// Initialize Vulkan and related resources
 	void init()
 	{
-		logger->set_pattern("[%H:%M:%S %^%l%$]: %v"); // [Hour:Minute:Second Level]: Message
+		// Set logger format
+		logger->set_pattern("[%H:%M:%S %^%l%$]: %v");
 
 		create_base_objects();
 		create_swapchain();
@@ -143,14 +144,13 @@ private:
 	uint32_t currentFrame = 0;
 	bool framebufferResized = false;
 
-	// Vertex data
+	// Vertex data for triangle w/ associated color data
 	const std::vector<Vertex> vertices =
 	{
 		{ {  0.0f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
 		{ {  0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f } },
 		{ { -0.5f,  0.5f }, { 0.0f, 0.0f, 1.0f } }
 	};
-
 
 	vk::Instance instance;
 	vk::DebugUtilsMessengerEXT debug_messenger;
@@ -216,7 +216,7 @@ private:
 	// Callback for framebuffer resize in case of device driver not sending resize signal (vk::Result::eErrorOutOfDateKHR)
 	static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 	{
-		auto app = reinterpret_cast<Triangle_Unbuffered*>(glfwGetWindowUserPointer(window));
+		auto app = reinterpret_cast<Triangle_Buffered*>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
 	}
 
@@ -734,7 +734,7 @@ private:
 // Application execution and logic
 int main()
 {
-	Triangle_Unbuffered app;
+	Triangle_Buffered app;
 
 	try
 	{
