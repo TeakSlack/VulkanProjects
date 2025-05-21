@@ -5,7 +5,7 @@ workspace "VulkanProjects"
     platforms {"x86_64"}
     startproject "HelloVulkan"
 
-outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
+    outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 group "Projects"
     include "vendor/glfw"

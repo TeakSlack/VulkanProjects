@@ -97,7 +97,7 @@ private:
 
 		// Enable the requested extensions
 		auto extensions = get_required_extensions();
-		createInfo.enabledExtensionCount = extensions.size();
+		createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
 		createInfo.ppEnabledExtensionNames = extensions.data();
 
 		instance = vk::createInstance(createInfo);

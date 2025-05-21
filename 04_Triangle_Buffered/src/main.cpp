@@ -143,7 +143,7 @@ private:
 		if (!glfwInit()) exit(EXIT_FAILURE);
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		window = glfwCreateWindow(1280, 720, "Triangle_Unbuffered", NULL, NULL);
+		window = glfwCreateWindow(1280, 720, application_name.c_str(), NULL, NULL);
 		if (!window) error("Failed to create window!");
 
 		glfwSetWindowUserPointer(window, this);

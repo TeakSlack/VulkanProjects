@@ -38,6 +38,11 @@ project "03_Triangle_Unbuffered"
                 "vulkan-1", -- Vulkan lib for Windows ('vulkan-1.lib')
             }
 
+            defines
+            {
+                "_CRT_SECURE_NO_WARNINGS"
+            }
+
         filter "system:linux"
             links 
             { 
@@ -54,3 +59,6 @@ project "03_Triangle_Unbuffered"
 
         filter "action:gmake"
             buildoptions { "-Wall", "-Wextra", "-Werror", "-std=c++20" }
+
+        filter "action:vs*"
+            buildoptions { "/utf-8" }

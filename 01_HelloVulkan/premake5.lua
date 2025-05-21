@@ -43,3 +43,6 @@ project "01_HelloVulkan"
 
         filter "action:gmake"
             buildoptions { "-Wall", "-Wextra", "-Werror", "-std=c++20" }
+
+        filter "action:vs*"
+            buildoptions { "/utf-8" }
