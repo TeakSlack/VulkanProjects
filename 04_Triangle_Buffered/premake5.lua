@@ -16,7 +16,8 @@ project "04_Triangle_Buffered"
             "%{IncludeDir.VulkanSDK}",
             "%{IncludeDir.spdlog}",
             "%{IncludeDir.glfw}",
-            "%{IncludeDir.vk_bootstrap}"
+            "%{IncludeDir.vk_bootstrap}",
+            "%{IncludeDir.glm}"
         }
 
         libdirs 

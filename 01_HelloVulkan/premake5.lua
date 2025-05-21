@@ -25,6 +25,11 @@ project "01_HelloVulkan"
         filter "system:windows"
             links { "vulkan-1" } -- Vulkan lib for Windows
 
+            defines
+            {
+                "_CRT_SECURE_NO_WARNINGS"
+            }
+
         filter "system:linux"
             links { "vulkan" }  -- Vulkan library for Linux (`libvulkan.so`)
 
