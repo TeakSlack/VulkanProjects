@@ -4,6 +4,7 @@
 #include <fstream>
 #include <unordered_set>
 #include <array>
+#include <utility>
 
 #include <vulkan/vulkan.hpp>
 #include <spdlog/spdlog.h>
@@ -71,10 +72,10 @@ public:
 		create_base_objects();
 		create_swapchain();
 		create_render_pass();
+		create_command_objects();
 		create_vertex_buffer();
 		create_graphics_pipeline();
 		create_framebuffers();
-		create_command_objects();
 		create_sync_objects();
 	}
 
@@ -113,7 +114,8 @@ public:
 			device.destroyFence(inFlightFences[i]);
 		}
 
-		device.destroyCommandPool(commandPool);
+		device.destroyCommandPool(graphicsCommandPool);
+		device.destroyCommandPool(transferCommandPool);
 		
 		instance.destroySurfaceKHR(surface);
 		device.destroy();
@@ -157,8 +159,8 @@ private:
 	vk::PhysicalDevice physicalDevice;
 	vk::Device device;
 	vk::SurfaceKHR surface;
-	uint32_t presentIdx = 0, graphicsIdx = 0;
-	vk::Queue presentQueue, graphicsQueue;
+	uint32_t presentIdx = 0, graphicsIdx = 0, transferIdx = 0;
+	vk::Queue presentQueue, graphicsQueue, transferQueue;
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::Image> swapImages;
 	std::vector<vk::ImageView> swapImageViews;
@@ -168,7 +170,7 @@ private:
 	vk::PipelineLayout pipelineLayout;
 	vk::Pipeline graphicsPipeline;
 	std::vector<vk::Framebuffer> swapFramebuffers;
-	vk::CommandPool commandPool;
+	vk::CommandPool graphicsCommandPool, transferCommandPool;
 	std::vector<vk::CommandBuffer> commandBuffers;
 	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
 	std::vector<vk::Fence> inFlightFences;
@@ -294,6 +296,20 @@ private:
 		graphicsIdx = devRet.value().get_queue_index(vkb::QueueType::graphics).value();
 		if (!graphicsQueueRet) error("Failed to get graphics queue: " + graphicsQueueRet.error().message());
 
+		// Check if device has a dedicated transfer queue. If not, fall back on graphics queue
+		auto transferQueueRet = devRet.value().get_dedicated_queue(vkb::QueueType::transfer);
+		if (transferQueueRet.error() == vkb::QueueError::transfer_unavailable)
+		{
+			logger->info("Transfer queue not found, falling back on graphics queue...");
+			transferIdx = graphicsIdx;
+			transferQueue = graphicsQueueRet.value();
+		}
+		else
+		{
+			transferIdx = devRet.value().get_dedicated_queue_index(vkb::QueueType::transfer).value();
+			transferQueue = transferQueueRet.value();
+		}
+
 		presentQueue = presentQueueRet.value();
 		graphicsQueue = graphicsQueueRet.value();
 	}
@@ -397,41 +413,110 @@ private:
 		}
 
 		error("Unable to find suitable memory type!");
+		return 0;
 	}
 
-	// Create vertex buffer
-	void create_vertex_buffer()
+	// Helper to abstract buffer creation
+	std::pair<vk::Buffer, vk::DeviceMemory> create_buffer(vk::DeviceSize size, vk::BufferUsageFlags flags, vk::MemoryPropertyFlags properties, vk::SharingMode sharingMode, std::vector<uint32_t> queues)
 	{
 		vk::BufferCreateInfo bufferInfo(
-			{},										// No special flags
-			sizeof(vertices[0]) * vertices.size(),	// Byte size of vertex data
-			vk::BufferUsageFlagBits::eVertexBuffer, // Usage is for a vertex buffer
-			vk::SharingMode::eExclusive,			// Vertex buffer is owned by graphics queue
-			graphicsIdx								// Owned by graphics queue
+			{},                 // No creation flags
+			size,               // Size of the buffer in bytes
+			flags,              // Buffer usage flags (e.g., vertex buffer, transfer source/destination)
+			sharingMode,        // Sharing mode: exclusive or concurrent between queue families
+			queues              // List of queue family indices that will access the buffer
 		);
 
-		vertexBuffer = device.createBuffer(bufferInfo);
+		vk::Buffer buffer = device.createBuffer(bufferInfo);
 
 		// After the buffer is created, memory must be assigned to it
 		// First, query the buffer memory requirments
-		vk::MemoryRequirements memReqs = device.getBufferMemoryRequirements(vertexBuffer);
+		vk::MemoryRequirements memReqs = device.getBufferMemoryRequirements(buffer);
 
 		// Assemble the allocation info after finding a suitable memory type
-		uint32_t memTypeIndex = find_memory_type(memReqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		uint32_t memTypeIndex = find_memory_type(memReqs.memoryTypeBits, properties);
 		vk::MemoryAllocateInfo allocInfo(memReqs.size, memTypeIndex);
 
 		// Allocate the vertex buffer memory
-		vertexBufferMemory = device.allocateMemory(allocInfo);
+		vk::DeviceMemory mem = device.allocateMemory(allocInfo);
 
 		// Finally, bind the memory with no offset
-		device.bindBufferMemory(vertexBuffer, vertexBufferMemory, 0);
+		device.bindBufferMemory(buffer, mem, 0);
 
-		// Copy the vertex data to the buffer via memory mapping
-		void* data = device.mapMemory(vertexBufferMemory, 0, bufferInfo.size);
-		memcpy(data, vertices.data(), static_cast<size_t>(bufferInfo.size));
+		return { buffer, mem };
+	}
 
-		// Unmap the memory
-		device.unmapMemory(vertexBufferMemory);
+	// Utility to copy buffer data
+	void copy_buffer(vk::Buffer src, vk::Buffer dst, vk::DeviceSize size)
+	{
+		vk::CommandBufferAllocateInfo allocInfo(transferCommandPool, vk::CommandBufferLevel::ePrimary, 1);
+
+		vk::CommandBuffer commandBuffer = device.allocateCommandBuffers(allocInfo)[0];
+
+		// Let the driver know our intent
+		vk::CommandBufferBeginInfo beginInfo({ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+		commandBuffer.begin(beginInfo);
+
+		// Define region to copy & copy the data
+		vk::BufferCopy copyRegion(0, 0, size);
+		commandBuffer.copyBuffer(src, dst, copyRegion);
+
+		commandBuffer.end();
+
+		// Submit the command buffer, wait till idle
+		vk::SubmitInfo submitInfo{};
+		submitInfo.setCommandBuffers(commandBuffer);
+		transferQueue.submit(submitInfo);
+		transferQueue.waitIdle();
+
+		// Destroy command buffer
+		device.freeCommandBuffers(transferCommandPool, commandBuffer);
+	}
+
+	// Create vertex buffer and stage vertex data using a staging buffer
+	void create_vertex_buffer()
+	{
+		// Determine queue families that will access the buffer
+		// Default: both graphics and transfer queues
+		std::vector<uint32_t> bufferQueueIdx = { graphicsIdx, transferIdx };
+		vk::DeviceSize size = sizeof(vertices[0]) * vertices.size(); // Total byte size of the vertex data
+		vk::SharingMode sharingMode = vk::SharingMode::eConcurrent;  // Allow concurrent access if queues differ
+
+		// If graphics and transfer queues are the same, use exclusive mode for better performance
+		if (graphicsIdx == transferIdx)
+		{
+			bufferQueueIdx = { graphicsIdx };
+			sharingMode = vk::SharingMode::eExclusive;
+		}
+
+		// Create a staging buffer in host-visible memory to upload vertex data from the CPU
+		auto [stagingBuffer, stagingBufferMemory] = create_buffer(
+			size,
+			vk::BufferUsageFlagBits::eTransferSrc, // Will serve as the source of a transfer operation
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, // CPU-visible memory
+			sharingMode,
+			bufferQueueIdx
+		);
+
+		// Map the staging buffer memory and copy vertex data from CPU to GPU-accessible staging memory
+		void* data = device.mapMemory(stagingBufferMemory, 0, size);
+		memcpy(data, vertices.data(), static_cast<size_t>(size));
+		device.unmapMemory(stagingBufferMemory); // Unmap after copying
+
+		// Create the final vertex buffer in device-local memory for optimal GPU performance
+		std::tie(vertexBuffer, vertexBufferMemory) = create_buffer(
+			size,
+			vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, // Used as copy target and vertex buffer
+			vk::MemoryPropertyFlagBits::eDeviceLocal, // High-performance GPU-local memory (not CPU-visible)
+			sharingMode,
+			bufferQueueIdx
+		);
+
+		// Copy the staging buffer to the vertex buffer on device-local memory
+		copy_buffer(stagingBuffer, vertexBuffer, size);
+
+		device.destroyBuffer(stagingBuffer);
+		device.freeMemory(stagingBufferMemory);
 	}
 
 	// Create graphics pipeline including shaders, pipeline layout, and fixed function stages
@@ -550,15 +635,18 @@ private:
 		}
 	}
 
-	// Create command pool and allocate two command buffers per frame
+	// Create command pool for graphics and transfer and allocate two command buffers per frame
 	void create_command_objects()
 	{
-		vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIdx);
-		commandPool = device.createCommandPool(poolInfo);
+		vk::CommandPoolCreateInfo graphicsPoolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIdx);
+		graphicsCommandPool = device.createCommandPool(graphicsPoolInfo);
+
+		vk::CommandPoolCreateInfo transferPoolInfo(vk::CommandPoolCreateFlagBits::eTransient, transferIdx);
+		transferCommandPool = device.createCommandPool(transferPoolInfo);
 
 		commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(commandBuffers.size()));
+		vk::CommandBufferAllocateInfo bufferInfo(graphicsCommandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(commandBuffers.size()));
 		commandBuffers = device.allocateCommandBuffers(bufferInfo);
 	}
 
