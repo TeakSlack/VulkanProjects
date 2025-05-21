@@ -70,6 +70,7 @@ public:
 		create_base_objects();
 		create_swapchain();
 		create_render_pass();
+		create_vertex_buffer();
 		create_graphics_pipeline();
 		create_framebuffers();
 		create_command_objects();
@@ -89,9 +90,14 @@ public:
 	// Cleanup Vulkan resources in reverse order of initialization
 	void destroy()
 	{
-		device.waitIdle(); // Wait until all GPU work is done
+		// Wait until all GPU work is done
+		device.waitIdle();
 
 		destroy_swapchain();
+
+		// Destroy vertex buffer & free its memory
+		device.destroyBuffer(vertexBuffer);
+		device.freeMemory(vertexBufferMemory);
 
 		// Destroy graphics pipeline
 		device.destroyPipeline(graphicsPipeline);
@@ -140,7 +146,7 @@ private:
 	// Vertex data
 	const std::vector<Vertex> vertices =
 	{
-		{ {  0.0f,  0.5f }, { 1.0f, 0.0f, 0.0f } },
+		{ {  0.0f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
 		{ {  0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f } },
 		{ { -0.5f,  0.5f }, { 0.0f, 0.0f, 1.0f } }
 	};
@@ -166,6 +172,8 @@ private:
 	std::vector<vk::CommandBuffer> commandBuffers;
 	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
 	std::vector<vk::Fence> inFlightFences;
+	vk::Buffer vertexBuffer;
+	vk::DeviceMemory vertexBufferMemory;
 
 private:
 	// Helper to read binary file (e.g., SPIR-V shader)
@@ -372,6 +380,60 @@ private:
 		renderPass = device.createRenderPass(renderPassInfo);
 	}
 
+	// Finds an optimal chunk of memory based upon type and flags
+	uint32_t find_memory_type(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
+	{
+		// Query info about available types of memory
+		// This structure contains two arrays: memoryTypes and memoryHeaps (eg. VRAM, swap space when VRAM runs out)
+		vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
+
+		// Iterate memory type and properties till find a suitable match is found
+		for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
+		{
+			bool isTypeSuitable = typeFilter & (1 << i);
+			bool hasRequiredProperties = (memProperties.memoryTypes[i].propertyFlags & properties) == properties;
+
+			if (isTypeSuitable && hasRequiredProperties) return i;
+		}
+
+		error("Unable to find suitable memory type!");
+	}
+
+	// Create vertex buffer
+	void create_vertex_buffer()
+	{
+		vk::BufferCreateInfo bufferInfo(
+			{},										// No special flags
+			sizeof(vertices[0]) * vertices.size(),	// Byte size of vertex data
+			vk::BufferUsageFlagBits::eVertexBuffer, // Usage is for a vertex buffer
+			vk::SharingMode::eExclusive,			// Vertex buffer is owned by graphics queue
+			graphicsIdx								// Owned by graphics queue
+		);
+
+		vertexBuffer = device.createBuffer(bufferInfo);
+
+		// After the buffer is created, memory must be assigned to it
+		// First, query the buffer memory requirments
+		vk::MemoryRequirements memReqs = device.getBufferMemoryRequirements(vertexBuffer);
+
+		// Assemble the allocation info after finding a suitable memory type
+		uint32_t memTypeIndex = find_memory_type(memReqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		vk::MemoryAllocateInfo allocInfo(memReqs.size, memTypeIndex);
+
+		// Allocate the vertex buffer memory
+		vertexBufferMemory = device.allocateMemory(allocInfo);
+
+		// Finally, bind the memory with no offset
+		device.bindBufferMemory(vertexBuffer, vertexBufferMemory, 0);
+
+		// Copy the vertex data to the buffer via memory mapping
+		void* data = device.mapMemory(vertexBufferMemory, 0, bufferInfo.size);
+		memcpy(data, vertices.data(), static_cast<size_t>(bufferInfo.size));
+
+		// Unmap the memory
+		device.unmapMemory(vertexBufferMemory);
+	}
+
 	// Create graphics pipeline including shaders, pipeline layout, and fixed function stages
 	void create_graphics_pipeline()
 	{
@@ -514,11 +576,32 @@ private:
 		commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
 
+		// Array of vertex buffers to bind (in this case, only one buffer)
+		vk::Buffer vertexBuffers[] = { vertexBuffer };
+
+		// Array of offsets into each vertex buffer (start at beginning of buffer)
+		vk::DeviceSize offsets[] = { 0 };
+
+		// Bind the vertex buffer(s) to the input assembly stage of the graphics pipeline
+		// Parameters:
+		//   0              -> First binding index (binding location in the shader)
+		//   vertexBuffers  -> Array of buffers to bind
+		//   offsets        -> Byte offsets into each buffer
+		commandBuffer.bindVertexBuffers(0, vertexBuffers, offsets);
+
 		vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(swapExtent.width), static_cast<float>(swapExtent.height), 0.0f, 1.0f);
 		commandBuffer.setViewport(0, viewport);
 		commandBuffer.setScissor(0, renderArea);
 
-		commandBuffer.draw(3, 1, 0, 0);
+		// Issue a draw call to render primitives using the currently bound pipeline and vertex buffers
+		// Parameters:
+		//   vertexCount        -> Number of vertices to draw (size of the vertex array)
+		//   instanceCount      -> Number of instances to draw (1 = no instancing)
+		//   firstVertex        -> Index of the first vertex to start with in the vertex buffer
+		//   firstInstance      -> Index of the first instance (used for instancing)
+		// In this case, we're drawing all vertices once, without instancing
+		commandBuffer.draw(static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+
 		commandBuffer.endRenderPass();
 		commandBuffer.end();
 	}
