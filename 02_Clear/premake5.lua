@@ -16,14 +16,17 @@ project "02_Clear"
             "%{IncludeDir.VulkanSDK}",
             "%{IncludeDir.spdlog}",
             "%{IncludeDir.glfw}",
-            "%{IncludeDir.vk_bootstrap}"
+            "%{IncludeDir.vk_bootstrap}",
+            "%{IncludeDir.glm}",
+            "%{IncludeDir.AppBase}"
         }
 
         libdirs 
         { 
             "%{LibraryDir.VulkanSDK}" ,
             "%{LibraryDir.glfw}",
-            "%{LibraryDir.vk_bootstrap}"
+            "%{LibraryDir.vk_bootstrap}",
+            "%{LibraryDir.AppBase}"
         }
 
         links
@@ -36,6 +39,7 @@ project "02_Clear"
             links 
             { 
                 "vulkan-1", -- Vulkan lib for Windows ('vulkan-1.lib')
+                "AppBase"
             }
 
             defines
@@ -47,6 +51,7 @@ project "02_Clear"
             links 
             { 
                 "vulkan", -- Vulkan library for Linux (`libvulkan.so`)
+                "AppBase"
             } 
 
         filter "configurations:Debug"

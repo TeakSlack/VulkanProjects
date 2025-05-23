@@ -14,9 +14,9 @@ project "vk-bootstrap"
     }
 
     includedirs 
-        {
-            "%{IncludeDir.VulkanSDK}"
-        }
+    {
+        "%{IncludeDir.VulkanSDK}"
+    }
 
     filter "configurations:Debug"
         defines { "DEBUG", "_DEBUG" }
