@@ -16,14 +16,16 @@ project "03_TriangleUnbuffered"
             "%{IncludeDir.VulkanSDK}",
             "%{IncludeDir.spdlog}",
             "%{IncludeDir.glfw}",
-            "%{IncludeDir.vk_bootstrap}"
+            "%{IncludeDir.vk_bootstrap}",
+            "%{IncludeDir.AppBase}"
         }
 
         libdirs 
         { 
             "%{LibraryDir.VulkanSDK}" ,
             "%{LibraryDir.glfw}",
-            "%{LibraryDir.vk_bootstrap}"
+            "%{LibraryDir.vk_bootstrap}",
+            "%{LibraryDir.AppBase}"
         }
 
         links

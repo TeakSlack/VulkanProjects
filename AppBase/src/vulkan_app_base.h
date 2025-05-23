@@ -1,4 +1,5 @@
-#pragma once
+#ifndef VULKAN_APP_BASE_H
+#define VULKAN_APP_BASE_H
 
 #include <exception>
 #include <iostream>
@@ -60,7 +61,7 @@ protected:
 	SwapchainConfig m_SwapConfig;
 
 	// GLFW window
-	GLFWwindow* m_Window;
+	GLFWwindow* m_Window = nullptr;
 
 	// Frames in flight
 	const int m_FramesInFlight = 2;
@@ -75,10 +76,10 @@ protected:
 	vk::PhysicalDevice m_PhysicalDevice;
 	vk::Device m_Device;
 	vk::Queue m_GraphicsQueue, m_PresentQueue, m_TransferQueue;
-	uint32_t m_GraphicsIdx, m_PresentIdx, m_TransferIdx;
+	uint32_t m_GraphicsIdx = 0, m_PresentIdx = 0, m_TransferIdx = 0;
 	vk::SwapchainKHR m_Swapchain;
 	vk::Extent2D m_SwapExtent;
-	vk::Format m_SwapFormat;
+	vk::Format m_SwapFormat{};
 	std::vector<vk::Framebuffer> m_Framebuffers;
 	std::vector<vk::Image> m_Images;
 	std::vector<vk::ImageView> m_ImageViews;
@@ -126,3 +127,5 @@ private:
 		app->m_FramebufferResized = true;
 	}
 };
+
+#endif
