@@ -49,14 +49,15 @@ class VulkanAppBase
 {
 public:
 	VulkanAppBase();
-	VulkanAppBase(const AppConfig& config);
+	VulkanAppBase(const AppConfig& m_Config);
 	virtual ~VulkanAppBase();
 
 	virtual void run() = 0;
 
 protected:
 	// Application information
-	AppConfig config;
+	AppConfig m_Config;
+	SwapchainConfig m_SwapConfig;
 
 	// GLFW window
 	GLFWwindow* m_Window;

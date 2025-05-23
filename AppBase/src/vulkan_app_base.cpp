@@ -1,21 +1,21 @@
 #include "vulkan_app_base.h"
 
 VulkanAppBase::VulkanAppBase()
-	: config{}
+	: m_Config{}
 {
 	// Default configuration values
-	config.application_name = "Vulkan Application";
-	config.application_version = VK_MAKE_VERSION(1, 0, 0);
-	config.engine_name = "Vulkan Application Base";
-	config.engine_version = VK_MAKE_VERSION(1, 0, 0);
-	config.enable_validation_layers = true;
-	config.window_width = 1280;
-	config.window_height = 720;
+	m_Config.application_name = "Vulkan Application";
+	m_Config.application_version = VK_MAKE_VERSION(1, 0, 0);
+	m_Config.engine_name = "Vulkan Application Base";
+	m_Config.engine_version = VK_MAKE_VERSION(1, 0, 0);
+	m_Config.enable_validation_layers = true;
+	m_Config.window_width = 1280;
+	m_Config.window_height = 720;
 }
 
 // Constructor: Initializes the Vulkan application base with the given configuration.
-VulkanAppBase::VulkanAppBase(const AppConfig& config)
-	: config(config)
+VulkanAppBase::VulkanAppBase(const AppConfig& m_Config)
+	: m_Config(m_Config)
 {
 	init();
 }
@@ -106,22 +106,22 @@ void VulkanAppBase::create_instance()
 	// Get required extensions from GLFW
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-	config.instance_extensions.insert(
-		config.instance_extensions.end(),
+	m_Config.instance_extensions.insert(
+		m_Config.instance_extensions.end(),
 		glfwExtensions,
 		glfwExtensions + glfwExtensionCount
 	);
 
 	// Build the Vulkan instance with vk-bootstrap
 	vkb::InstanceBuilder instanceBuilder;
-	instanceBuilder.set_app_name(config.application_name.c_str())
-		.set_app_version(config.application_version)
-		.set_engine_name(config.engine_name.c_str())
-		.set_engine_version(config.engine_version)
-		.enable_validation_layers(config.enable_validation_layers)
-		.request_validation_layers(config.enable_validation_layers)
+	instanceBuilder.set_app_name(m_Config.application_name.c_str())
+		.set_app_version(m_Config.application_version)
+		.set_engine_name(m_Config.engine_name.c_str())
+		.set_engine_version(m_Config.engine_version)
+		.enable_validation_layers(m_Config.enable_validation_layers)
+		.request_validation_layers(m_Config.enable_validation_layers)
 		.use_default_debug_messenger()
-		.enable_extensions(config.instance_extensions);
+		.enable_extensions(m_Config.instance_extensions);
 
 	// Create the Vulkan instance
 	auto instanceRet = instanceBuilder.build();
@@ -141,18 +141,18 @@ void VulkanAppBase::create_device()
 
 	// If no device features are specified, enable geometry shader by default
 	vk::PhysicalDeviceFeatures zeroFeatures{};
-	if (memcmp(&config.device_features, &zeroFeatures, sizeof(VkPhysicalDeviceFeatures)) == 0)
+	if (memcmp(&m_Config.device_features, &zeroFeatures, sizeof(VkPhysicalDeviceFeatures)) == 0)
 	{
-		config.device_features.geometryShader = vk::True;
+		m_Config.device_features.geometryShader = vk::True;
 	}
 
 	assert(m_Surface && "vk::SurfaceKHR has not been initialized!");
 
 	// Select a physical device using vk-bootstrap
 	vkb::PhysicalDeviceSelector physicalDeviceSelector{ m_VkbInstance };
-	physicalDeviceSelector.add_required_extensions(config.device_extensions)
+	physicalDeviceSelector.add_required_extensions(m_Config.device_extensions)
 		.set_surface(m_Surface)
-		.set_required_features(config.device_features);
+		.set_required_features(m_Config.device_features);
 
 	auto physRet = physicalDeviceSelector.select();
 	if (!physRet)
@@ -207,9 +207,9 @@ void VulkanAppBase::create_window_and_surface()
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 	m_Window = glfwCreateWindow(
-		config.window_width,
-		config.window_height,
-		config.application_name.c_str(),
+		m_Config.window_width,
+		m_Config.window_height,
+		m_Config.application_name.c_str(),
 		NULL,
 		NULL
 	);
@@ -228,34 +228,22 @@ void VulkanAppBase::create_window_and_surface()
 // Creates the swapchain and associated image views.
 void VulkanAppBase::create_swapchain()
 {
-	vkb::SwapchainBuilder swapBuilder{ m_PhysicalDevice, m_Device, m_Surface, m_GraphicsIdx, m_PresentIdx };
+	SwapchainConfig swapConfig{
+			.format = vk::SurfaceFormatKHR(vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear),
+			.presentMode = vk::PresentModeKHR::eMailbox,
+			.usage = vk::ImageUsageFlagBits::eColorAttachment
+	};
 
-	int width, height;
-	glfwGetFramebufferSize(m_Window, &width, &height);
-
-	swapBuilder.use_default_format_selection()
-		.use_default_present_mode_selection()
-		.use_default_image_usage_flags()
-		.set_desired_extent(width, height)
-		.set_image_array_layer_count(1);
-
-	auto swapRet = swapBuilder.build();
-	if (!swapRet)
-		error("Failed to create swapchain (" + swapRet.error().message() + ")");
-
-	m_Swapchain = swapRet.value().swapchain;
-
-	// Store swapchain images and views
-	for (const auto image : swapRet.value().get_images().value())
-		m_Images.push_back(image);
-
-	for (const auto imageView : swapRet.value().get_image_views().value())
-		m_ImageViews.push_back(imageView);
+	create_swapchain(swapConfig);
 }
 
 // Overload: Creates the swapchain with a custom configuration.
 void VulkanAppBase::create_swapchain(const SwapchainConfig& swapConfig)
 {
+	assert(m_PhysicalDevice && "Physical device has not been initialized, did you forget to call create_device()?");
+
+	m_SwapConfig = swapConfig;
+
 	vkb::SwapchainBuilder swapBuilder{ m_PhysicalDevice, m_Device, m_Surface, m_GraphicsIdx, m_PresentIdx };
 
 	int width, height;
@@ -263,6 +251,7 @@ void VulkanAppBase::create_swapchain(const SwapchainConfig& swapConfig)
 
 	swapBuilder.set_desired_format(swapConfig.format)
 		.set_desired_present_mode(static_cast<VkPresentModeKHR>(swapConfig.presentMode))
+		.add_fallback_present_mode(VK_PRESENT_MODE_FIFO_KHR)
 		.set_image_usage_flags(static_cast<VkImageUsageFlags>(swapConfig.usage))
 		.set_desired_extent(width, height)
 		.set_image_array_layer_count(1);
@@ -301,8 +290,9 @@ void VulkanAppBase::recreate_swapchain()
 	// Destroy previous swapchain before recreation
 	destroy_swapchain();
 
-	create_swapchain();
-	create_framebuffers();
+	create_swapchain(m_SwapConfig);
+
+	if(!m_Framebuffers.empty()) create_framebuffers();
 }
 
 // Destroys the swapchain and associated resources.

@@ -79,7 +79,7 @@ protected:
 		// Configure swapchain format, present mode, and usage flags
 		SwapchainConfig swapConfig{
 			.format = vk::SurfaceFormatKHR(vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear),
-			.presentMode = vk::PresentModeKHR::eFifo,
+			.presentMode = vk::PresentModeKHR::eMailbox,
 			.usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst
 		};
 
