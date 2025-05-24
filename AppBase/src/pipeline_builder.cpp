@@ -7,10 +7,28 @@
 
 // Constructor for PipelineBuilder.
 // Ensures the provided Vulkan device is valid and stores it for later pipeline/shader creation.
-PipelineBuilder::PipelineBuilder(vk::Device device)
-	: m_Device(device)
+PipelineBuilder::PipelineBuilder(vk::PhysicalDevice physicalDevice, vk::Device device)
+	: m_PhysicalDevice(physicalDevice), m_Device(device)
 {
+	assert(physicalDevice && "vk::PhysicalDevice has not been initialized!");
 	assert(device && "vk::Device has not been initialized!");
+
+	m_DeviceProperties = m_PhysicalDevice.getProperties();
+	m_DeviceFeatures = m_PhysicalDevice.getFeatures();
+
+	m_MaxViewports = m_DeviceProperties.limits.maxViewports;
+}
+
+// Destructor for PipelineBuilder.
+PipelineBuilder::~PipelineBuilder()
+{
+	for (auto& shaderModule : m_ShaderStages)
+	{
+		if (shaderModule.module)
+		{
+			m_Device.destroyShaderModule(shaderModule.module);
+		}
+	}
 }
 
 // Adds a shader stage to the pipeline by loading a SPIR-V shader from file.
@@ -82,8 +100,24 @@ PipelineBuilder& PipelineBuilder::set_primitive_restart(bool enable = true)
 
 PipelineBuilder& PipelineBuilder::set_dynamic_topology(bool enable)
 {
-	if (enable)
+	auto it = std::find(state.dynamicStates.begin(),
+		state.dynamicStates.end(),
+		vk::DynamicState::ePrimitiveTopologyEXT
+	);
+
+	if (enable && it != state.dynamicStates.end())
+	{
 		state.dynamicStates.push_back(vk::DynamicState::ePrimitiveTopologyEXT);
+		return *this;
+	}
+
+	if (!enable && it == state.dynamicStates.end())
+	{
+		state.dynamicStates.erase(it);
+		return *this;
+	}
+
+	return *this;
 }
 
 PipelineBuilder& PipelineBuilder::set_patch_control_points(uint32_t points)
@@ -98,6 +132,149 @@ PipelineBuilder& PipelineBuilder::add_dynamic_state(vk::DynamicState dynamicStat
 	return *this;
 }
 
+PipelineBuilder& PipelineBuilder::add_viewport(vk::Viewport viewport)
+{
+	// Add a viewport to the pipeline.
+	state.viewportState.viewports.push_back(viewport);
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::add_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+	// Create a viewport and add it to the pipeline.
+	vk::Viewport viewport(x, y, width, height, minDepth, maxDepth);
+	state.viewportState.viewports.push_back(viewport);
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::add_scissor(vk::Rect2D scissor)
+{
+	// Add a scissor rectangle to the pipeline.
+	state.viewportState.scissors.push_back(scissor);
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::add_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height)
+{
+	// Create a scissor rectangle and add it to the pipeline.
+	vk::Rect2D scissor({ x, y }, { width, height });
+	state.viewportState.scissors.push_back(scissor);
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_clamp(bool enable)
+{
+	// Enable or disable depth clamping in the rasterization state.
+	state.rasterizationState.depthClamp = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_rasterizer_discard(bool enable)
+{
+	// Enable or disable rasterizer discard in the rasterization state.
+	state.rasterizationState.rasterizerDiscard = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_polygon_mode(vk::PolygonMode mode)
+{
+	// Set the polygon mode in the rasterization state.
+	state.rasterizationState.polygonMode = mode;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_cull_mode(vk::CullModeFlags mode)
+{
+	// Set the cull mode in the rasterization state.
+	state.rasterizationState.cullMode = mode;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_front_face(vk::FrontFace face)
+{
+	// Set the front face in the rasterization state.
+	state.rasterizationState.frontFace = face;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_bias(bool enable)
+{
+	// Enable or disable depth bias in the rasterization state.
+	state.rasterizationState.depthBias = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_line_width(float width)
+{
+	// Set the line width in the rasterization state.
+	state.rasterizationState.lineWidth = width;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_bias_constant(float constant)
+{
+	// Set the depth bias constant in the rasterization state.
+	state.rasterizationState.depthBiasConstant = constant;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_bias_clamp(float clamp)
+{
+	// Set the depth bias clamp in the rasterization state.
+	state.rasterizationState.depthBiasClamp = clamp;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_bias_slope(float slope)
+{
+	// Set the depth bias slope in the rasterization state.
+	state.rasterizationState.depthBiasSlope = slope;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_dynamic_line_width(bool enable)
+{
+	auto it = std::find(state.dynamicStates.begin(),
+		state.dynamicStates.end(),
+		vk::DynamicState::eLineWidth
+	);
+
+	if (enable && it != state.dynamicStates.end())
+	{
+		state.dynamicStates.push_back(vk::DynamicState::eLineWidth);
+		return *this;
+	}
+
+	if (!enable && it == state.dynamicStates.end())
+	{
+		state.dynamicStates.erase(it);
+		return *this;
+	}
+
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_dynamic_depth_bias(bool enable)
+{
+	auto it = std::find(state.dynamicStates.begin(),
+		state.dynamicStates.end(),
+		vk::DynamicState::eDepthBias
+	);
+
+	if (enable && it != state.dynamicStates.end())
+	{
+		state.dynamicStates.push_back(vk::DynamicState::eDepthBias);
+		return *this;
+	}
+
+	if (!enable && it == state.dynamicStates.end())
+	{
+		state.dynamicStates.erase(it);
+		return *this;
+	}
+
+	return *this;
+}
 
 std::optional<vk::Pipeline> PipelineBuilder::build()
 {
@@ -120,6 +297,12 @@ std::optional<vk::Pipeline> PipelineBuilder::build()
 		state.vertexInput.attributeDescriptions
 	);
 
+	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo(
+		{},
+		state.inputAssembly.topology,
+		state.inputAssembly.primitiveRestartEnable
+	);
+
 	if (state.tessellationState.patchControlPoints > 0 &&
 		state.inputAssembly.topology != vk::PrimitiveTopology::ePatchList) {
 		throw std::runtime_error("Tessellation requires patch list topology");
@@ -129,11 +312,63 @@ std::optional<vk::Pipeline> PipelineBuilder::build()
 
 	vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, state.dynamicStates);
 
-	return vk::Pipeline
+	if (state.viewportState.viewports.size() > m_MaxViewports)
 	{
+		spdlog::error("Number of viewports exceeds the maximum limit.");
+		throw std::runtime_error("Too many viewports.");
+	}
+
+	if (state.viewportState.scissors.size() > m_MaxViewports)
+	{
+		spdlog::error("Number of scissors exceeds the maximum limit.");
+		throw std::runtime_error("Too many scissors.");
+	}
+
+	if (state.viewportState.viewports.size() != state.viewportState.scissors.size())
+	{
+		spdlog::error("Number of viewports and scissors do not match.");
+		throw std::runtime_error("Mismatched viewports and scissors.");
+	}
+
+	vk::PipelineViewportStateCreateInfo viewportStateInfo(
+		{},
+		state.viewportState.viewports,
+		state.viewportState.scissors
+	);
+
+	if (state.rasterizationState.lineWidth != 1.0f && !m_DeviceFeatures.wideLines)
+	{
+		spdlog::error("Wide lines requested, but not available.");
+		throw std::runtime_error("Wide lines not supported.");
+	}
+
+	if (state.rasterizationState.depthClamp && !m_DeviceFeatures.depthClamp)
+	{
+		spdlog::error("Depth clamp requested, but not available.");
+		throw std::runtime_error("Depth clamp not supported.");
+	}
+	
+	vk::PipelineRasterizationStateCreateInfo rasterizerInfo(
+		{},
+		state.rasterizationState.depthClamp,
+		state.rasterizationState.rasterizerDiscard,
+		state.rasterizationState.polygonMode,
+		state.rasterizationState.cullMode,
+		state.rasterizationState.frontFace,
+		state.rasterizationState.depthBias,
+		state.rasterizationState.lineWidth,
+		state.rasterizationState.depthBiasConstant,
+		state.rasterizationState.depthBiasClamp,
+		state.rasterizationState.depthBiasSlope
+	);
+
+	vk::GraphicsPipelineCreateInfo pipelineInfo(
 		{},
 		shaderStages,
 		&vertexInputInfo,
-		&tessellationInfo
-	};
+		&inputAssemblyInfo,
+		&tessellationInfo,
+		&viewportStateInfo,
+		&rasterizerInfo,
+		);
 }

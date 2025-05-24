@@ -11,20 +11,11 @@
 
 #include "vertex.h"
 
-enum class PrimitiveTopology
-{
-	TriangleFan = vk::PrimitiveTopology::eTriangleFan,
-	TriangleList = vk::PrimitiveTopology::eTriangleList,
-	TriangleStrip = vk::PrimitiveTopology::eTriangleStrip,
-	LineList = vk::PrimitiveTopology::eLineList,
-	LineStrip = vk::PrimitiveTopology::eLineStrip,
-	PointList = vk::PrimitiveTopology::ePointList,
-};
-
 class PipelineBuilder
 {
 public:
-	PipelineBuilder(vk::Device device);
+	PipelineBuilder(vk::PhysicalDevice physicalDevice, vk::Device device);
+	~PipelineBuilder();
 
 	PipelineBuilder& add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits stage);
 	PipelineBuilder& set_primitive_topology(vk::PrimitiveTopology topology);
@@ -32,6 +23,22 @@ public:
 	PipelineBuilder& set_dynamic_topology(bool enable);
 	PipelineBuilder& set_patch_control_points(uint32_t points);
 	PipelineBuilder& add_dynamic_state(vk::DynamicState dynamicState);
+	PipelineBuilder& add_viewport(vk::Viewport viewport);
+	PipelineBuilder& add_viewport(float x, float y, float width, float height, float minDepth, float maxDepth);
+	PipelineBuilder& add_scissor(vk::Rect2D scissor);
+	PipelineBuilder& add_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height);
+	PipelineBuilder& set_depth_clamp(bool enable);
+	PipelineBuilder& set_rasterizer_discard(bool enable);
+	PipelineBuilder& set_polygon_mode(vk::PolygonMode mode);
+	PipelineBuilder& set_cull_mode(vk::CullModeFlags mode);
+	PipelineBuilder& set_front_face(vk::FrontFace face);
+	PipelineBuilder& set_depth_bias(bool enable);
+	PipelineBuilder& set_line_width(float width);
+	PipelineBuilder& set_depth_bias_constant(float constant);
+	PipelineBuilder& set_depth_bias_clamp(float clamp);
+	PipelineBuilder& set_depth_bias_slope(float slope);
+	PipelineBuilder& set_dynamic_line_width(bool enable);
+	PipelineBuilder& set_dynamic_depth_bias(bool enable);
 
 	std::optional<vk::Pipeline> build();
 
@@ -85,9 +92,29 @@ public:
 		struct TesselationState
 		{
 			uint32_t patchControlPoints = 0;
-		} tesselationState;
+		} tessellationState;
 
 		std::vector<vk::DynamicState> dynamicStates;
+
+		struct ViewportState
+		{
+			std::vector<vk::Viewport> viewports;
+			std::vector<vk::Rect2D> scissors;
+		} viewportState;
+
+		struct RasterizationState
+		{
+			vk::Bool32 depthClamp = vk::False;
+			vk::Bool32 rasterizerDiscard = vk::False;
+			vk::PolygonMode polygonMode = vk::PolygonMode::eFill;
+			vk::CullModeFlags cullMode = vk::CullModeFlagBits::eBack;
+			vk::FrontFace frontFace = vk::FrontFace::eClockwise;
+			vk::Bool32 depthBias = vk::False;
+			float lineWidth = 1.0f;
+			float depthBiasConstant = 0.0f;
+			float depthBiasClamp = 0.0f;
+			float depthBiasSlope = 0.0f;
+		} rasterizationState;
 	} state;
 
 	struct ShaderStage
@@ -97,8 +124,13 @@ public:
 	};
 
 private:
+	vk::PhysicalDevice m_PhysicalDevice;
+	vk::PhysicalDeviceProperties m_DeviceProperties;
+	vk::PhysicalDeviceFeatures m_DeviceFeatures;
 	vk::Device m_Device;
 
 	std::vector<ShaderStage> m_ShaderStages;
+
+	uint32_t m_MaxViewports = 0;
 };
 #endif
