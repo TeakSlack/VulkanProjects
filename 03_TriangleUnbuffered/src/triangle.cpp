@@ -8,7 +8,9 @@ class TriangleBuffered : public VulkanAppBase
 public:
 	void run()
 	{
-
+		create_command_buffer();
+		create_render_pass();
+		create_graphics_pipeline();
 	}
 };
 

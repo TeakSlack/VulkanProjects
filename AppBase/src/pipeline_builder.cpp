@@ -17,7 +17,7 @@ PipelineBuilder::PipelineBuilder(vk::Device device)
 // shaderPath: Path to the SPIR-V binary file.
 // stage: Enum value indicating the shader stage (e.g., vertex, fragment).
 // Returns a reference to this builder for method chaining.
-PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath, ShaderStageType stage)
+PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits stage)
 {
 	// Check if a shader of this stage type already exists
 	auto it = std::find_if(
@@ -66,16 +66,74 @@ PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath
 	return *this;
 }
 
+PipelineBuilder& PipelineBuilder::set_primitive_topology(vk::PrimitiveTopology topology)
+{
+	// Set the primitive topology for the input assembly state.
+	state.inputAssembly.topology = topology;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_primitive_restart(bool enable = true)
+{
+	// Enable or disable primitive restart in the input assembly state.
+	state.inputAssembly.primitiveRestartEnable = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_dynamic_topology(bool enable)
+{
+	if (enable)
+		state.dynamicStates.push_back(vk::DynamicState::ePrimitiveTopologyEXT);
+}
+
+PipelineBuilder& PipelineBuilder::set_patch_control_points(uint32_t points)
+{
+	state.tessellationState.patchControlPoints = points;
+}
+
+PipelineBuilder& PipelineBuilder::add_dynamic_state(vk::DynamicState dynamicState)
+{
+	// Add a dynamic state to the pipeline.
+	state.dynamicStates.push_back(dynamicState);
+	return *this;
+}
+
+
 std::optional<vk::Pipeline> PipelineBuilder::build()
 {
+	// Shader stage: create shader stages
 	std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
 
 	for (const auto& stage : m_ShaderStages)
 	{
 		vk::PipelineShaderStageCreateInfo stageInfo{};
-		stageInfo.stage = static_cast<vk::ShaderStageFlagBits>(stage.type);
+		stageInfo.stage = stage.type;
 		stageInfo.module = stage.module;
 		stageInfo.pName = "main";
 		shaderStages.push_back(stageInfo);
 	}
+
+	// Vertex input: define how Vulkan should interpret vertex input
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo(
+		{},
+		state.vertexInput.bindingDescriptions,
+		state.vertexInput.attributeDescriptions
+	);
+
+	if (state.tessellationState.patchControlPoints > 0 &&
+		state.inputAssembly.topology != vk::PrimitiveTopology::ePatchList) {
+		throw std::runtime_error("Tessellation requires patch list topology");
+	}
+
+	vk::PipelineTessellationStateCreateInfo tessellationInfo({}, state.tessellationState.patchControlPoints);
+
+	vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, state.dynamicStates);
+
+	return vk::Pipeline
+	{
+		{},
+		shaderStages,
+		&vertexInputInfo,
+		&tessellationInfo
+	};
 }

@@ -337,7 +337,7 @@ private:
 		// Vertex input: no vertices used (defined in vertex shader)	
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 
-		// Input assembly: draw Triangle_Buffered from vertices
+		// Input assembly: draw triangle from vertices
 		vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo({}, vk::PrimitiveTopology::eTriangleStrip, vk::False);
 
 		// Viewport and scissor
