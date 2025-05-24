@@ -39,6 +39,11 @@ public:
 	PipelineBuilder& set_depth_bias_slope(float slope);
 	PipelineBuilder& set_dynamic_line_width(bool enable);
 	PipelineBuilder& set_dynamic_depth_bias(bool enable);
+	PipelineBuilder& set_sample_count(vk::SampleCountFlagBits count);
+	PipelineBuilder& set_sample_shading(bool enable, float minSampleShading);
+	PipelineBuilder& add_sample_mask(vk::SampleMask mask);
+	PipelineBuilder& set_alpha_to_coverage(bool enable);
+	PipelineBuilder& set_alpha_to_one(bool enable);
 
 	std::optional<vk::Pipeline> build();
 
@@ -115,6 +120,16 @@ public:
 			float depthBiasClamp = 0.0f;
 			float depthBiasSlope = 0.0f;
 		} rasterizationState;
+
+		struct MultisampleState
+		{
+			vk::SampleCountFlagBits rasterizationSamples = vk::SampleCountFlagBits::e1;
+			vk::Bool32 sampleShadingEnable = vk::False;
+			float minSampleShading = 1.0f;
+			std::vector<vk::SampleMask> sampleMasks;
+			vk::Bool32 alphaToCoverageEnable = vk::False;
+			vk::Bool32 alphaToOneEnable = vk::False;
+		} multisampleState;
 	} state;
 
 	struct ShaderStage
@@ -132,5 +147,8 @@ private:
 	std::vector<ShaderStage> m_ShaderStages;
 
 	uint32_t m_MaxViewports = 0;
+
+private:
+	void toggle_dynamic_state(bool enable, vk::DynamicState dynamicState);
 };
 #endif

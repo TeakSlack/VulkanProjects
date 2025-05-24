@@ -100,23 +100,7 @@ PipelineBuilder& PipelineBuilder::set_primitive_restart(bool enable = true)
 
 PipelineBuilder& PipelineBuilder::set_dynamic_topology(bool enable)
 {
-	auto it = std::find(state.dynamicStates.begin(),
-		state.dynamicStates.end(),
-		vk::DynamicState::ePrimitiveTopologyEXT
-	);
-
-	if (enable && it != state.dynamicStates.end())
-	{
-		state.dynamicStates.push_back(vk::DynamicState::ePrimitiveTopologyEXT);
-		return *this;
-	}
-
-	if (!enable && it == state.dynamicStates.end())
-	{
-		state.dynamicStates.erase(it);
-		return *this;
-	}
-
+	toggle_dynamic_state(enable, vk::DynamicState::ePrimitiveTopology);
 	return *this;
 }
 
@@ -234,45 +218,47 @@ PipelineBuilder& PipelineBuilder::set_depth_bias_slope(float slope)
 
 PipelineBuilder& PipelineBuilder::set_dynamic_line_width(bool enable)
 {
-	auto it = std::find(state.dynamicStates.begin(),
-		state.dynamicStates.end(),
-		vk::DynamicState::eLineWidth
-	);
-
-	if (enable && it != state.dynamicStates.end())
-	{
-		state.dynamicStates.push_back(vk::DynamicState::eLineWidth);
-		return *this;
-	}
-
-	if (!enable && it == state.dynamicStates.end())
-	{
-		state.dynamicStates.erase(it);
-		return *this;
-	}
-
+	toggle_dynamic_state(enable, vk::DynamicState::eLineWidth);
 	return *this;
 }
 
 PipelineBuilder& PipelineBuilder::set_dynamic_depth_bias(bool enable)
 {
-	auto it = std::find(state.dynamicStates.begin(),
-		state.dynamicStates.end(),
-		vk::DynamicState::eDepthBias
-	);
+	toggle_dynamic_state(enable, vk::DynamicState::eDepthBias);
+	return *this;
+}
 
-	if (enable && it != state.dynamicStates.end())
-	{
-		state.dynamicStates.push_back(vk::DynamicState::eDepthBias);
-		return *this;
-	}
+PipelineBuilder& PipelineBuilder::set_sample_count(vk::SampleCountFlagBits count) 
+{
+	state.multisampleState.rasterizationSamples = count;
+	return *this;
+}
 
-	if (!enable && it == state.dynamicStates.end())
-	{
-		state.dynamicStates.erase(it);
-		return *this;
-	}
+PipelineBuilder& PipelineBuilder::set_sample_shading(bool enable, float minSampleShading)
+{
+	state.multisampleState.sampleShadingEnable = enable ? vk::True : vk::False;
+	state.multisampleState.minSampleShading = minSampleShading;
+	return *this;
+}
 
+PipelineBuilder& PipelineBuilder::add_sample_mask(vk::SampleMask mask)
+{
+	// Add a sample mask to the multisample state.
+	state.multisampleState.sampleMasks.push_back(mask);
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_alpha_to_coverage(bool enable)
+{
+	// Enable or disable alpha-to-coverage in the multisample state.
+	state.multisampleState.alphaToCoverageEnable = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_alpha_to_one(bool enable)
+{
+	// Enable or disable alpha-to-one in the multisample state.
+	state.multisampleState.alphaToOneEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
@@ -362,6 +348,28 @@ std::optional<vk::Pipeline> PipelineBuilder::build()
 		state.rasterizationState.depthBiasSlope
 	);
 
+	if (!(m_DeviceProperties.limits.framebufferColorSampleCounts & state.multisampleState.rasterizationSamples))
+	{
+		spdlog::error("Sample count not supported by device.");
+		throw std::runtime_error("Unsupported sample count.");
+	}
+
+	if (!m_DeviceFeatures.sampleRateShading && state.multisampleState.sampleShadingEnable)
+	{
+		spdlog::error("Sample shading requested, but not available.");
+		throw std::runtime_error("Sample shading not supported.");
+	}
+
+	vk::PipelineMultisampleStateCreateInfo multisamplingInfo(
+		{}, 
+		state.multisampleState.rasterizationSamples,
+		state.multisampleState.sampleShadingEnable,
+		state.multisampleState.minSampleShading,
+		state.multisampleState.sampleMasks.data(),
+		state.multisampleState.alphaToCoverageEnable,
+		state.multisampleState.alphaToOneEnable
+	);
+
 	vk::GraphicsPipelineCreateInfo pipelineInfo(
 		{},
 		shaderStages,
@@ -370,5 +378,24 @@ std::optional<vk::Pipeline> PipelineBuilder::build()
 		&tessellationInfo,
 		&viewportStateInfo,
 		&rasterizerInfo,
+		&multisamplingInfo,
 		);
+}
+
+void PipelineBuilder::toggle_dynamic_state(bool enable, vk::DynamicState dynamicState)
+{
+	auto it = std::find(state.dynamicStates.begin(),
+		state.dynamicStates.end(),
+		dynamicState
+	);
+
+	if (enable && it == state.dynamicStates.end())
+	{
+		state.dynamicStates.push_back(dynamicState);
+	}
+
+	else if (!enable && it != state.dynamicStates.end())
+	{
+		state.dynamicStates.erase(it);
+	}
 }
