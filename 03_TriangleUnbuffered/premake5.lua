@@ -17,6 +17,7 @@ project "03_TriangleUnbuffered"
             "%{IncludeDir.spdlog}",
             "%{IncludeDir.glfw}",
             "%{IncludeDir.vk_bootstrap}",
+            "%{IncludeDir.glm}",
             "%{IncludeDir.AppBase}"
         }
 
@@ -38,6 +39,7 @@ project "03_TriangleUnbuffered"
             links 
             { 
                 "vulkan-1", -- Vulkan lib for Windows ('vulkan-1.lib')
+                "AppBase"
             }
 
             defines
@@ -49,6 +51,7 @@ project "03_TriangleUnbuffered"
             links 
             { 
                 "vulkan", -- Vulkan library for Linux (`libvulkan.so`)
+                "AppBase"
             } 
 
         filter "configurations:Debug"

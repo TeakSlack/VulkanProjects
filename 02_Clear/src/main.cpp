@@ -50,8 +50,8 @@ public:
 	// Constructor: initializes the base Vulkan application and logs startup
 	Clear() : VulkanAppBase()
 	{
-		init();
 		logger->info("Clear application initialized");
+		init();
 	}
 
 	// Main application loop

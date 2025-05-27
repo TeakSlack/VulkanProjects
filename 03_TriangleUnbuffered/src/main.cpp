@@ -1,282 +1,79 @@
 #include <exception>
-#include <iostream>
 #include <vector>
-#include <fstream>
-#include <unordered_set>
 
-#include <vulkan/vulkan.hpp>
 #include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <GLFW/glfw3.h>
+#include <vulkan_app_base.h>
+#include <pipeline_builder.h>
 
-#include "VkBootstrap.h"
-
-// Define how many frames can be processed simultaneously
-const int MAX_FRAMES_IN_FLIGHT = 2;
-
-// Create a color logger using spdlog
-auto logger = spdlog::stdout_color_mt("logger");
-
-// Helper function to log an error and exit the application
-void error(std::string message)
-{
-	logger->error("An error has occurred: " + message);
-	exit(EXIT_FAILURE);
-}
-
-class TriangleUnbuffered
+class TriangleBuffered : public VulkanAppBase
 {
 public:
-	std::string application_name = "Triangle (Unbuffered)";
-
-public:
-	// Initialize Vulkan and related resources
-	void init()
+	TriangleBuffered() : VulkanAppBase()
 	{
-		create_base_objects();
-		create_swapchain();
-		create_render_pass();
-		create_graphics_pipeline();
-		create_framebuffers();
-		create_command_objects();
-		create_sync_objects();
+		init();
+		spdlog::info("Triangle application initialized");
 	}
 
-	// Run the main render loop
+	~TriangleBuffered()
+	{
+		destroy();
+		spdlog::info("Triangle application destroyed");
+	}
+
 	void run()
 	{
-		while (!glfwWindowShouldClose(window))
+		while (!glfwWindowShouldClose(m_Window))
 		{
 			glfwPollEvents(); // Handle window events
 			draw_frame(); // Draw one frame
 		}
 	}
 
-	// Cleanup Vulkan resources in reverse order of initialization
-	void destroy()
-	{
-		device.waitIdle(); // Wait until all GPU work is done
+private:
+	vk::RenderPass m_RenderPass; // Render pass for the triangle rendering
+	std::vector<vk::Framebuffer> m_Framebuffers; // Framebuffers for each swapchain image
+	std::vector<vk::CommandBuffer> m_CommandBuffers; // Command buffers for recording draw commands
+	vk::Pipeline m_GraphicsPipeline; // Graphics pipeline for rendering the triangle
 
-		destroy_swapchain();
-
-		// Destroy graphics pipeline
-		device.destroyPipeline(graphicsPipeline);
-		device.destroyPipelineLayout(pipelineLayout);
-		device.destroyRenderPass(renderPass);
-
-		// Destroy synchronization primitives
-		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-		{
-			device.destroySemaphore(renderFinishedSemaphores[i]);
-			device.destroySemaphore(imageAvailableSemaphores[i]);
-			device.destroyFence(inFlightFences[i]);
-		}
-
-		device.destroyCommandPool(commandPool);
-		
-		instance.destroySurfaceKHR(surface);
-		device.destroy();
-
-#ifdef DEBUG
-		// Destroy debug messenger only in debug builds
-		vk::DispatchLoaderDynamic dldi(instance, vkGetInstanceProcAddr);
-		instance.destroyDebugUtilsMessengerEXT(debug_messenger, nullptr, dldi);
-#endif
-
-		instance.destroy();
-		glfwDestroyWindow(window);
-	}
+	int16_t m_CurrentFrame = 0; // Current frame for rendering
 
 private:
-	// Core application objects
-	GLFWwindow* window = nullptr;
-
-	vk::Instance instance;
-	vk::DebugUtilsMessengerEXT debug_messenger;
-	vk::PhysicalDevice physicalDevice;
-	vk::Device device;
-	vk::SurfaceKHR surface;
-	uint32_t presentIdx = 0, graphicsIdx = 0;
-	vk::Queue presentQueue, graphicsQueue;
-	vk::SwapchainKHR swapchain;
-	std::vector<vk::Image> swapImages;
-	std::vector<vk::ImageView> swapImageViews;
-	vk::Extent2D swapExtent;
-	vk::Format swapFormat{};
-	vk::RenderPass renderPass;
-	vk::PipelineLayout pipelineLayout;
-	vk::Pipeline graphicsPipeline;
-	std::vector<vk::Framebuffer> swapFramebuffers;
-	vk::CommandPool commandPool;
-	std::vector<vk::CommandBuffer> commandBuffers;
-	std::vector<vk::Semaphore> imageAvailableSemaphores, renderFinishedSemaphores;
-	std::vector<vk::Fence> inFlightFences;
-	uint32_t currentFrame = 0;
-	bool framebufferResized = false;
-
-private:
-	// Helper to read binary file (e.g., SPIR-V shader)
-	static std::vector<char> read_file(const std::string& fileName)
+	void init() override
 	{
-		std::ifstream file(fileName, std::ifstream::ate | std::ifstream::binary);
+		VulkanAppBase::init();
+		create_command_buffer();
+		create_render_pass();
+		create_framebuffers();
+		create_graphics_pipeline();
+	}
 
-		if (!file.is_open())
+	void destroy() override
+	{
+		m_Device.waitIdle();
+
+		destroy_framebuffers();
+		m_Device.destroyPipeline(m_GraphicsPipeline);
+		m_Device.destroyRenderPass(m_RenderPass);
+
+		for (auto& commandBuffer : m_CommandBuffers)
 		{
-			logger->error("Failed to open file " + fileName);
-			exit(EXIT_FAILURE);
+			m_Device.freeCommandBuffers(m_GraphicsCommandPool, commandBuffer);
 		}
-
-		size_t fileSize = file.tellg();
-		std::vector<char> buffer(fileSize);
-
-		file.seekg(0);
-		file.read(buffer.data(), fileSize);
-
-		file.close();
-		return buffer;
 	}
 
-	// Create GLFW window and Vulkan surface
-	void create_window()
+	void create_command_buffer()
 	{
-		if (!glfwInit()) exit(EXIT_FAILURE);
+		m_CommandBuffers.resize(m_FramesInFlight);
 
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		window = glfwCreateWindow(1280, 720, application_name.c_str(), NULL, NULL);
-		if (!window) error("Failed to create window!");
-
-		glfwSetWindowUserPointer(window, this);
-		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
-		VkResult err = glfwCreateWindowSurface(instance, window, NULL, reinterpret_cast<VkSurfaceKHR*>(&surface));
-		if (err != VK_SUCCESS) error("Failed to create window surface");
+		vk::CommandBufferAllocateInfo bufferInfo(m_GraphicsCommandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(m_CommandBuffers.size()));
+		m_CommandBuffers = m_Device.allocateCommandBuffers(bufferInfo);
 	}
 
-	// Callback for framebuffer resize in case of device driver not sending resize signal (vk::Result::eErrorOutOfDateKHR)
-	static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-	{
-		auto app = reinterpret_cast<TriangleUnbuffered*>(glfwGetWindowUserPointer(window));
-		app->framebufferResized = true;
-	}
-
-	// Create Vulkan device, physical device, logical device
-	void create_base_objects()
-	{
-		// Get the extensions required by GLFW
-		uint32_t glfwCount = 0;
-		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwCount);
-		std::vector<const char*> requiredExtensions(glfwExtensions, glfwExtensions + glfwCount);
-
-		// Initialize Vulkan with vk-bootstrap
-		vkb::InstanceBuilder instanceBuilder;
-		instanceBuilder.set_app_name(application_name.c_str())
-			.set_app_version(VK_MAKE_VERSION(1, 0, 0))
-			.set_engine_name("No Engine")
-			.set_engine_version(VK_MAKE_VERSION(0, 0, 0)) // 0.0.0 for no engine
-			.enable_extensions(requiredExtensions);
-
-#ifdef DEBUG
-		// Setup debug messages only in case of debug build
-		instanceBuilder.request_validation_layers();
-		instanceBuilder.use_default_debug_messenger();
-#endif
-
-		auto instanceRet = instanceBuilder.build();
-		if (!instanceRet) error("Failed to create Vulkan instance (" + instanceRet.error().message() + ")");
-
-		debug_messenger = instanceRet.value().debug_messenger;
-		instance = instanceRet.value().instance;
-
-		create_window();
-
-		// Setup required device extensions
-		std::vector<const char*> requiredDeviceExtensions
-		{
-			VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-			VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME
-		};
-
-		// Enable synchronization2 (specific to Vulkan 1.3)
-		vk::PhysicalDeviceSynchronization2Features synchronization2
-		{
-			VK_TRUE
-		};
-
-		vk::PhysicalDeviceFeatures features{};
-		features.geometryShader = true;
-
-		// Select a physical device using vk-bootstrap
-		vkb::PhysicalDeviceSelector physDeviceSelector{ instanceRet.value() };
-		physDeviceSelector.add_required_extensions(requiredDeviceExtensions)
-			.set_surface(surface)
-			.set_required_features(features);
-		
-		auto physRet = physDeviceSelector.select();
-		if (!physRet) error("Failed to select physical device (" + physRet.error().message() + ")");
-
-		physicalDevice = physRet.value().physical_device;
-
-		vkb::DeviceBuilder deviceBuilder{ physRet.value() };
-		deviceBuilder.add_pNext(&synchronization2);
-
-		// Create logical device
-		auto devRet = deviceBuilder.build();
-		if (!devRet) error("Failed to create device (" + devRet.error().message() + ")");
-		device = devRet.value().device;
-
-		// Retrieve queues
-		auto presentQueueRet = devRet.value().get_queue(vkb::QueueType::present);
-		presentIdx = devRet.value().get_queue_index(vkb::QueueType::present).value();
-		if (!presentQueueRet) error("Failed to get presentation queue: " + presentQueueRet.error().message());
-
-		auto graphicsQueueRet = devRet.value().get_queue(vkb::QueueType::graphics);
-		graphicsIdx = devRet.value().get_queue_index(vkb::QueueType::graphics).value();
-		if (!graphicsQueueRet) error("Failed to get graphics queue: " + graphicsQueueRet.error().message());
-
-		presentQueue = presentQueueRet.value();
-		graphicsQueue = graphicsQueueRet.value();
-	}
-
-	// Creates swapchain, images, and image views
-	void create_swapchain()
-	{
-		vkb::SwapchainBuilder swapBuilder{ physicalDevice, device, surface, graphicsIdx, presentIdx };
-		int width, height;
-		glfwGetFramebufferSize(window, &width, &height);
-
-		swapBuilder.use_default_format_selection()
-			.use_default_present_mode_selection()
-			.use_default_image_usage_flags()
-			.set_desired_extent(width, height)
-			.set_image_array_layer_count(1);
-
-		auto swapRet = swapBuilder.build();
-		if (!swapRet) error("Failed to create swapchain (" + swapRet.error().message() + ")");
-
-		swapchain = swapRet.value().swapchain;
-
-		// Create swapchain image and views
-		for (const auto image : swapRet.value().get_images().value()) swapImages.push_back(image);
-		for (const auto imageView : swapRet.value().get_image_views().value()) swapImageViews.push_back(imageView);
-
-		swapExtent = swapRet.value().extent;
-		swapFormat = static_cast<vk::Format>(swapRet.value().image_format);
-	}
-
-	// Helper to create shader module from SPIR-V code
-	vk::ShaderModule create_shader_module(std::vector<char>& code)
-	{
-		
-		vk::ShaderModuleCreateInfo moduleInfo({}, code.size(), reinterpret_cast<const uint32_t*>(code.data()));
-		return device.createShaderModule(moduleInfo);
-	}
-
-	// Create a basic render pass for presenting images
 	void create_render_pass()
 	{
 		vk::AttachmentDescription colorAttachment(
 			{},									// No flags
-			swapFormat,							// Use defined swapchain format
+			m_SwapFormat,						// Use defined swapchain format
 			vk::SampleCountFlagBits::e1,		// One sample per pixel (no multisampling)
 			vk::AttachmentLoadOp::eClear,		// Clear previous contents within render area
 			vk::AttachmentStoreOp::eStore,		// Save contents generated during render pass to memory
@@ -316,131 +113,44 @@ private:
 		// Define render pass info with color attachment, subpasses, and dependencies
 		vk::RenderPassCreateInfo renderPassInfo({}, colorAttachment, subpass, dependency);
 
-		renderPass = device.createRenderPass(renderPassInfo);
+		m_RenderPass = m_Device.createRenderPass(renderPassInfo);
 	}
 
-	// Create graphics pipeline including shaders, pipeline layout, and fixed function stages
+	void create_framebuffers()
+	{
+		m_Framebuffers.resize(m_ImageViews.size());
+
+		for (size_t i = 0; i < m_Framebuffers.size(); i++)
+		{
+			std::vector<vk::ImageView> attachments{ m_ImageViews[i] };
+
+			vk::FramebufferCreateInfo framebufferInfo({}, m_RenderPass, attachments, m_SwapExtent.width, m_SwapExtent.height, 1);
+
+			m_Framebuffers[i] = m_Device.createFramebuffer(framebufferInfo);
+		}
+	}
+
 	void create_graphics_pipeline()
 	{
-		auto vertShader = read_file("src/shader/vert.spv");
-		auto fragShader = read_file("src/shader/frag.spv");
-
-		vk::ShaderModule vertModule = create_shader_module(vertShader);
-		vk::ShaderModule fragModule = create_shader_module(fragShader);
-
-		// Shader stage creation
-		vk::PipelineShaderStageCreateInfo vertStageInfo({}, vk::ShaderStageFlagBits::eVertex, vertModule, "main");
-		vk::PipelineShaderStageCreateInfo fragStageInfo({}, vk::ShaderStageFlagBits::eFragment, fragModule, "main");
-
-		std::vector<vk::PipelineShaderStageCreateInfo> shaderStages { vertStageInfo, fragStageInfo };
-
-		// Vertex input: no vertices used (defined in vertex shader)	
-		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-
-		// Input assembly: draw triangle from vertices
-		vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo({}, vk::PrimitiveTopology::eTriangleStrip, vk::False);
-
-		// Viewport and scissor
-		vk::Viewport viewport(0.0f, 0.0f, (float)swapExtent.width, (float)swapExtent.height, 0.0f, 1.0f);
-		vk::Rect2D scissor({}, swapExtent);
-		vk::PipelineViewportStateCreateInfo viewportStateInfo({}, viewport, scissor);
-
-		std::vector<vk::DynamicState> dynamicStates
-		{
-			vk::DynamicState::eViewport,
-			vk::DynamicState::eScissor
-		};
-
-		vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, dynamicStates);
-
-		// Configure rasterization stage of the graphics pipeline
-		vk::PipelineRasterizationStateCreateInfo rasterizerInfo(
-			{},										// No special flags
-			vk::False,								// Disable depth clamping (clipping instead of clamping fragments outside near/far planes)
-			vk::False,								// Disable rasterizer discard (enables actual rasterization)
-			vk::PolygonMode::eFill,					// Fill polygons (can also use eLine or ePoint for wireframe/point rendering)
-			vk::CullModeFlagBits::eBack,			// Cull back-facing polygons to improve performance
-			vk::FrontFace::eClockwise,				// Clockwise vertex winding is considered front-facing
-			vk::False								// Disable depth bias (used for things like shadow mapping)
-		);
-
-		// Set the width of lines when rendering in line mode (must be 1.0 unless wide lines are enabled via GPU features)
-		rasterizerInfo.lineWidth = 1.0f;
-
-		// Multisampling
-		vk::PipelineMultisampleStateCreateInfo multisamplingInfo{};
-
-		// Color blending
 		vk::PipelineColorBlendAttachmentState colorBlendAttachmentInfo{};
 		colorBlendAttachmentInfo.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 		colorBlendAttachmentInfo.blendEnable = vk::False;
 
-		vk::PipelineColorBlendStateCreateInfo colorBlendInfo({}, vk::False, vk::LogicOp::eNoOp, colorBlendAttachmentInfo, {});
+		PipelineBuilder pipelineBuilder(m_PhysicalDevice, m_Device);
 
-		// Pipeline info: no descriptors or push constants
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+		pipelineBuilder.add_shader_stage("src/shader/vert.spv", vk::ShaderStageFlagBits::eVertex)
+			.add_shader_stage("src/shader/frag.spv", vk::ShaderStageFlagBits::eFragment)
+			.set_primitive_topology(vk::PrimitiveTopology::eTriangleStrip)
+			.add_viewport(0.0f, 0.0f, static_cast<float>(m_SwapExtent.width), static_cast<float>(m_SwapExtent.height), 0.0f, 1.0f)
+			.add_scissor(0, 0, m_SwapExtent.width, m_SwapExtent.height)
+			.add_dynamic_state(vk::DynamicState::eViewport)
+			.add_dynamic_state(vk::DynamicState::eScissor)
+			.add_color_blend_attachment(colorBlendAttachmentInfo)
+			.set_render_pass(m_RenderPass, 0);
 
-		// Create graphics pipeline configuration with various pipeline stages and fixed-function states
-		vk::GraphicsPipelineCreateInfo pipelineInfo(
-			{},										// No special flags
-			shaderStages,							// Array of shader stages (e.g., vertex and fragment shaders)
-			&vertexInputInfo,						// Pointer to vertex input state (binding and attribute descriptions)
-			&inputAssemblyInfo,						// Pointer to input assembly state (e.g., topology like Triangle_Buffered list)
-			{},										// No tessellation state (not used unless tessellation shaders are enabled)
-			&viewportStateInfo,						// Pointer to viewport and scissor rectangle state
-			&rasterizerInfo,						// Pointer to rasterization state (polygon mode, culling, front face, etc.)
-			&multisamplingInfo,						// Pointer to multisample state (anti-aliasing configuration)
-			{},										// No depth/stencil state (not used here)
-			&colorBlendInfo,						// Pointer to color blending state (blend operations per attachment)
-			&dynamicStateInfo,						// Pointer to dynamic state (e.g., dynamic viewport/scissor)
-			pipelineLayout,							// Pipeline layout (descriptor sets and push constants layout)
-			renderPass								// Render pass this pipeline will be used with
-			// subpass index (optional) and base pipeline info (optional) not provided here
-		);
-
-
-		vk::ResultValue<vk::Pipeline> result = device.createGraphicsPipeline(VK_NULL_HANDLE, pipelineInfo);
-		if (result.result != vk::Result::eSuccess) error("Failed to create graphics pipeline!");
-
-		graphicsPipeline = result.value;
-
-		// Cleanup shader modules after pipeline creation
-		device.destroyShaderModule(vertModule);
-		device.destroyShaderModule(fragModule);
+		m_GraphicsPipeline = pipelineBuilder.build();
 	}
 
-	// Create framebuffers for each swapchain image
-	void create_framebuffers()
-	{
-		swapFramebuffers.resize(swapImageViews.size());
-
-		for (size_t i = 0; i < swapFramebuffers.size(); i++)
-		{
-			std::vector<vk::ImageView> attachments
-			{
-				swapImageViews[i]
-			};
-
-			vk::FramebufferCreateInfo framebufferInfo({}, renderPass, attachments, swapExtent.width, swapExtent.height, 1);
-
-			swapFramebuffers[i] = device.createFramebuffer(framebufferInfo);
-		}
-	}
-
-	// Create command pool and allocate two command buffers per frame
-	void create_command_objects()
-	{
-		vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIdx);
-		commandPool = device.createCommandPool(poolInfo);
-
-		commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
-		vk::CommandBufferAllocateInfo bufferInfo(commandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(commandBuffers.size()));
-		commandBuffers = device.allocateCommandBuffers(bufferInfo);
-	}
-
-	// Record command buffer for each frame
 	void record_command_buffer(vk::CommandBuffer commandBuffer, uint32_t imageIdx)
 	{
 		vk::CommandBufferBeginInfo beginInfo{};
@@ -448,13 +158,13 @@ private:
 
 		vk::ClearValue clearColor({ 0.0f, 0.0f, 0.0f, 1.0f });
 
-		vk::Rect2D renderArea({ 0,0 }, swapExtent);
-		vk::RenderPassBeginInfo renderPassInfo(renderPass, swapFramebuffers[imageIdx], renderArea, clearColor);
+		vk::Rect2D renderArea({ 0,0 }, m_SwapExtent);
+		vk::RenderPassBeginInfo renderPassInfo(m_RenderPass, m_Framebuffers[imageIdx], renderArea, clearColor);
 
 		commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
-		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline);
 
-		vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(swapExtent.width), static_cast<float>(swapExtent.height), 0.0f, 1.0f);
+		vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(m_SwapExtent.width), static_cast<float>(m_SwapExtent.height), 0.0f, 1.0f);
 		commandBuffer.setViewport(0, viewport);
 		commandBuffer.setScissor(0, renderArea);
 
@@ -463,32 +173,13 @@ private:
 		commandBuffer.end();
 	}
 
-	// Create fences and semaphores for synchronization
-	void create_sync_objects()
-	{
-		vk::SemaphoreCreateInfo semaphoreInfo{};
-		vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
-
-		imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-		renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-		inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-
-		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-		{
-			imageAvailableSemaphores[i] = device.createSemaphore(semaphoreInfo);
-			renderFinishedSemaphores[i] = device.createSemaphore(semaphoreInfo);
-			inFlightFences[i] = device.createFence(fenceInfo);
-		}
-	}
-	
-	// Main rendering logic per frame
 	void draw_frame()
 	{
-		auto res1 = device.waitForFences(inFlightFences[currentFrame], vk::True, UINT64_MAX);
+		auto res1 = m_Device.waitForFences(m_InFlightFences[m_CurrentFrame], vk::True, UINT64_MAX);
 
 		if (res1 != vk::Result::eSuccess) error("Fence operation failed!");
 
-		auto res2 = device.acquireNextImageKHR(swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], {});
+		auto res2 = m_Device.acquireNextImageKHR(m_Swapchain, UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame], {});
 
 		// Recreate swapchain if inadequate, exit draw_frame
 		if (res2.result == vk::Result::eErrorOutOfDateKHR)
@@ -500,13 +191,13 @@ private:
 		uint32_t imageIdx = res2.value;
 
 		// Only reset fences if we are submitting work with it
-		device.resetFences(inFlightFences[currentFrame]);
+		m_Device.resetFences(m_InFlightFences[m_CurrentFrame]);
 
-		commandBuffers[currentFrame].reset();
-		record_command_buffer(commandBuffers[currentFrame], imageIdx);
+		m_CommandBuffers[m_CurrentFrame].reset();
+		record_command_buffer(m_CommandBuffers[m_CurrentFrame], imageIdx);
 
-		const std::vector<vk::Semaphore> waitSemaphores(1, imageAvailableSemaphores[currentFrame]);
-		const std::vector<vk::Semaphore> signalSemaphores(1,renderFinishedSemaphores[currentFrame]);
+		const std::vector<vk::Semaphore> waitSemaphores(1, m_ImageAvailableSemaphores[m_CurrentFrame]);
+		const std::vector<vk::Semaphore> signalSemaphores(1, m_RenderFinishedSemaphores[m_CurrentFrame]);
 		const std::vector<vk::PipelineStageFlags> waitStages(1, vk::PipelineStageFlagBits::eColorAttachmentOutput);
 
 		// Structure describing how command buffers should be submitted to a queue
@@ -531,80 +222,54 @@ private:
 		submitInfo.setCommandBufferCount(1);
 
 		// Pointer to the command buffer to execute (specific to the current frame)
-		submitInfo.setPCommandBuffers(&commandBuffers[currentFrame]);
+		submitInfo.setPCommandBuffers(&m_CommandBuffers[m_CurrentFrame]);
 
 		// Submit the submit info
-		graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
+		m_GraphicsQueue.submit(submitInfo, m_InFlightFences[m_CurrentFrame]);
 
-		vk::PresentInfoKHR presentInfo(signalSemaphores, swapchain, imageIdx);
+		vk::PresentInfoKHR presentInfo(signalSemaphores, m_Swapchain, imageIdx);
 
 		// Recreate swapchain if out-of-date or suboptimal
-		auto res3 = graphicsQueue.presentKHR(presentInfo);
-		if (res3 == vk::Result::eErrorOutOfDateKHR || res3 == vk::Result::eSuboptimalKHR || framebufferResized)
+		auto res3 = m_GraphicsQueue.presentKHR(presentInfo);
+		if (res3 == vk::Result::eErrorOutOfDateKHR || res3 == vk::Result::eSuboptimalKHR || m_FramebufferResized)
 		{
-			framebufferResized = false;
+			m_FramebufferResized = false;
 			recreate_swapchain();
 		}
 		else if (res3 != vk::Result::eSuccess) error("Failed to present!");
 
-		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		m_CurrentFrame = (m_CurrentFrame + 1) % m_FramesInFlight;
 	}
 
-	// Cleanup swapchain objects for application exit or swapchain recreation
-	void destroy_swapchain()
+	void recreate_swapchain() override
 	{
-		// Destroy all framebuffers
-		for (const auto& framebuffer : swapFramebuffers) device.destroyFramebuffer(framebuffer);
+		VulkanAppBase::recreate_swapchain();
 
-		// Destroy image views
-		for (const auto& imageView : swapImageViews) device.destroyImageView(imageView);
-		swapImageViews.clear();
-
-		// Clear images (destroyed by 'destroySwapchainKHR')
-		swapImages.clear();
-
-		device.destroySwapchainKHR(swapchain);
+		destroy_framebuffers();
+		create_framebuffers();
 	}
 
-	// Swapchain recreation for window resizing
-	void recreate_swapchain()
+	void destroy_framebuffers()
 	{
-		// Pause application while minimized
-		int width = 0, height = 0;
-		glfwGetFramebufferSize(window, &width, &height);
-		while (width == 0 || height == 0)
+		for (auto framebuffer : m_Framebuffers)
 		{
-			glfwGetFramebufferSize(window, &width, &height);
-			glfwWaitEvents();
+			m_Device.destroyFramebuffer(framebuffer);
 		}
 
-		device.waitIdle();
-
-		// Destroy previous swapchain before recreation
-		destroy_swapchain();
-
-		create_swapchain();
-		create_framebuffers();
+		m_Framebuffers.clear();
 	}
 };
 
-// Application execution and logic
 int main()
 {
-	logger->set_pattern("[%H:%M:%S %^%l%$]: %v"); // [Hour:Minute:Second Level]: Message
-
 	try
 	{
-		TriangleUnbuffered app;
+		TriangleBuffered app;
 
-		app.init();
 		app.run();
-		app.destroy();
 	}
-	catch (const std::exception& e)
+	catch (std::exception& e)
 	{
-		logger->error(e.what());
+		spdlog::error(e.what());
 	}
-
-	return EXIT_SUCCESS;
 }
