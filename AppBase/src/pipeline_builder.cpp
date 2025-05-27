@@ -262,7 +262,67 @@ PipelineBuilder& PipelineBuilder::set_alpha_to_one(bool enable)
 	return *this;
 }
 
-std::optional<vk::Pipeline> PipelineBuilder::build()
+PipelineBuilder& PipelineBuilder::set_render_pass(vk::RenderPass renderPass, uint32_t subpassIndex = 0)
+{
+	m_RenderPass = renderPass;
+	m_SubpassIndex = subpassIndex;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_test(bool enable)
+{
+	state.depthStencilState.depthTestEnable = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_write(bool enable)
+{
+	state.depthStencilState.depthWriteEnable = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_compare_op(vk::CompareOp compareOp)
+{
+	state.depthStencilState.depthCompareOp = compareOp;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_depth_bounds_test(bool enable)
+{
+	state.depthStencilState.depthBoundsTestEnable = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_stencil_test(bool enable)
+{
+	state.depthStencilState.stencilTestEnable = enable ? vk::True : vk::False;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_stencil_front(vk::StencilOpState front)
+{
+	state.depthStencilState.front = front;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_stencil_back(vk::StencilOpState back)
+{
+	state.depthStencilState.back = back;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_min_depth_bounds(float minDepthBounds)
+{
+	state.depthStencilState.minDepthBounds = minDepthBounds;
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::set_max_depth_bounds(float maxDepthBounds)
+{
+	state.depthStencilState.maxDepthBounds = maxDepthBounds;
+	return *this;
+}
+
+vk::Pipeline PipelineBuilder::build()
 {
 	// Shader stage: create shader stages
 	std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
@@ -370,6 +430,33 @@ std::optional<vk::Pipeline> PipelineBuilder::build()
 		state.multisampleState.alphaToOneEnable
 	);
 
+	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo(
+		{},
+		state.depthStencilState.depthTestEnable,
+		state.depthStencilState.depthWriteEnable,
+		state.depthStencilState.depthCompareOp,
+		state.depthStencilState.depthBoundsTestEnable,
+		state.depthStencilState.stencilTestEnable,
+		state.depthStencilState.front,
+		state.depthStencilState.back,
+		state.depthStencilState.minDepthBounds,
+		state.depthStencilState.maxDepthBounds
+	);
+
+	vk::PipelineColorBlendStateCreateInfo colorBlendInfo(
+		{},
+		state.colorBlendState.logicOpEnable,
+		state.colorBlendState.logicOp,
+		state.colorBlendState.attachments,
+		state.colorBlendState.blendConstants
+	);
+
+	vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, state.dynamicStates);
+
+	vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, state.pipelineLayout.descriptorSetLayouts, state.pipelineLayout.pushConstantRanges);
+	m_PipelineLayout = m_Device.createPipelineLayout(pipelineLayoutInfo);
+
+	// TODO: implement base pipeline info functionality
 	vk::GraphicsPipelineCreateInfo pipelineInfo(
 		{},
 		shaderStages,
@@ -379,7 +466,24 @@ std::optional<vk::Pipeline> PipelineBuilder::build()
 		&viewportStateInfo,
 		&rasterizerInfo,
 		&multisamplingInfo,
+		&depthStencilInfo,
+		&colorBlendInfo,
+		&dynamicStateInfo,
+		m_PipelineLayout,
+		m_RenderPass,
+		m_SubpassIndex
 		);
+
+	// TODO: implement pipeline cacheing
+	vk::ResultValue<vk::Pipeline> result = m_Device.createGraphicsPipeline(VK_NULL_HANDLE, pipelineInfo);
+
+	if (result.result != vk::Result::eSuccess)
+	{
+		spdlog::error("Failed to create graphics pipeline: {}", vk::to_string(result.result));
+		throw std::runtime_error("Failed to create graphics pipeline.");
+	}
+
+	return result.value;
 }
 
 void PipelineBuilder::toggle_dynamic_state(bool enable, vk::DynamicState dynamicState)

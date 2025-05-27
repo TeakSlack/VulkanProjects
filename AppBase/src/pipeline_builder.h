@@ -6,6 +6,7 @@
 #include <optional>
 #include <unordered_map>
 #include <type_traits>
+#include <array>
 
 #include <vulkan/vulkan.hpp>
 
@@ -44,8 +45,18 @@ public:
 	PipelineBuilder& add_sample_mask(vk::SampleMask mask);
 	PipelineBuilder& set_alpha_to_coverage(bool enable);
 	PipelineBuilder& set_alpha_to_one(bool enable);
+	PipelineBuilder& set_render_pass(vk::RenderPass renderPass, uint32_t subpassIndex = 0);
+	PipelineBuilder& set_depth_test(bool enable);
+	PipelineBuilder& set_depth_write(bool enable);
+	PipelineBuilder& set_depth_compare_op(vk::CompareOp compareOp);
+	PipelineBuilder& set_depth_bounds_test(bool enable);
+	PipelineBuilder& set_stencil_test(bool enable);
+	PipelineBuilder& set_stencil_front(vk::StencilOpState front);
+	PipelineBuilder& set_stencil_back(vk::StencilOpState back);
+	PipelineBuilder& set_min_depth_bounds(float minDepthBounds);
+	PipelineBuilder& set_max_depth_bounds(float maxDepthBounds);
 
-	std::optional<vk::Pipeline> build();
+	vk::Pipeline build();
 
 	template<typename T>
 	PipelineBuilder& set_vertex_format()
@@ -130,6 +141,36 @@ public:
 			vk::Bool32 alphaToCoverageEnable = vk::False;
 			vk::Bool32 alphaToOneEnable = vk::False;
 		} multisampleState;
+
+		struct DepthStencilState
+		{
+			vk::Bool32 depthTestEnable = vk::False;
+			vk::Bool32 depthWriteEnable = vk::False;
+			vk::CompareOp depthCompareOp = vk::CompareOp::eNever;
+			vk::Bool32 depthBoundsTestEnable = vk::False;
+			vk::Bool32 stencilTestEnable = vk::False;
+			vk::StencilOpState front{};
+			vk::StencilOpState back{};
+			float minDepthBounds = 0.0f;
+			float maxDepthBounds = 0.0f;
+		} depthStencilState;
+
+		// TODO: write functions to set parameters & add attachment
+		// TODO: add helper for attachment states
+		struct ColorBlendState
+		{
+			vk::Bool32 logicOpEnable = false;
+			vk::LogicOp logicOp = vk::LogicOp::eNoOp;
+			std::vector<vk::PipelineColorBlendAttachmentState> attachments;
+			std::array<float, 4> blendConstants;
+		} colorBlendState;
+
+		// TODO: write helpers functions
+		struct PipelineLayout
+		{
+			std::vector<vk::DescriptorSetLayout> descriptorSetLayouts;
+			std::vector<vk::PushConstantRange> pushConstantRanges;
+		} pipelineLayout;
 	} state;
 
 	struct ShaderStage
@@ -143,6 +184,9 @@ private:
 	vk::PhysicalDeviceProperties m_DeviceProperties;
 	vk::PhysicalDeviceFeatures m_DeviceFeatures;
 	vk::Device m_Device;
+	vk::PipelineLayout m_PipelineLayout;
+	vk::RenderPass m_RenderPass;
+	uint32_t m_SubpassIndex;
 
 	std::vector<ShaderStage> m_ShaderStages;
 
