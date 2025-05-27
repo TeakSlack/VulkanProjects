@@ -47,9 +47,6 @@ void VulkanAppBase::init()
 	// Create command pools
 	create_command_pools();
 
-	// Create framebuffers for swapchain images
-	create_framebuffers();
-
 	// Create synchronization objects (semaphores and fences)
 	create_sync_objects();
 }
@@ -78,10 +75,6 @@ void VulkanAppBase::destroy()
 
 	for (const auto& image : m_Images)
 		m_Device.destroyImage(image);
-
-	// Destroy framebuffers
-	for (const auto& framebuffer : m_Framebuffers)
-		m_Device.destroyFramebuffer(framebuffer);
 
 	// Destroy surface
 	if (m_Surface)
@@ -291,17 +284,11 @@ void VulkanAppBase::recreate_swapchain()
 	destroy_swapchain();
 
 	create_swapchain(m_SwapConfig);
-
-	if(!m_Framebuffers.empty()) create_framebuffers();
 }
 
 // Destroys the swapchain and associated resources.
 void VulkanAppBase::destroy_swapchain()
 {
-	// Destroy all framebuffers
-	for (const auto& framebuffer : m_Framebuffers)
-		m_Device.destroyFramebuffer(framebuffer);
-
 	// Destroy image views
 	for (const auto& imageView : m_ImageViews)
 		m_Device.destroyImageView(imageView);
@@ -313,24 +300,11 @@ void VulkanAppBase::destroy_swapchain()
 	m_Device.destroySwapchainKHR(m_Swapchain);
 }
 
-// Creates framebuffers for each swapchain image view.
-void VulkanAppBase::create_framebuffers()
-{
-	m_Framebuffers.resize(m_ImageViews.size());
-
-	for (size_t i = 0; i < m_Framebuffers.size(); i++)
-	{
-		std::vector<vk::ImageView> attachments{ m_ImageViews[i] };
-		vk::FramebufferCreateInfo framebufferInfo(
-			{}, m_RenderPass, attachments, m_SwapExtent.width, m_SwapExtent.height, 1
-		);
-		m_Framebuffers[i] = m_Device.createFramebuffer(framebufferInfo);
-	}
-}
-
 // Creates command pools for graphics and transfer operations.
 void VulkanAppBase::create_command_pools()
 {
+	assert(m_Device && "vk::Device must be initialized!");
+
 	vk::CommandPoolCreateInfo graphicsPoolInfo(
 		vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_GraphicsIdx
 	);
@@ -346,6 +320,8 @@ void VulkanAppBase::create_command_pools()
 // These are used to coordinate rendering and presentation between the CPU and GPU.
 void VulkanAppBase::create_sync_objects()
 {
+	assert(m_Device && "vk::Device must be initialized!");
+
 	// Create info structures for semaphores and fences.
 	vk::SemaphoreCreateInfo semaphoreInfo{};
 	// Fences are created in the signaled state so the first frame can be rendered immediately.

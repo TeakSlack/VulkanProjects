@@ -80,7 +80,6 @@ protected:
 	vk::SwapchainKHR m_Swapchain;
 	vk::Extent2D m_SwapExtent;
 	vk::Format m_SwapFormat{};
-	std::vector<vk::Framebuffer> m_Framebuffers;
 	std::vector<vk::Image> m_Images;
 	std::vector<vk::ImageView> m_ImageViews;
 	vk::RenderPass m_RenderPass;
@@ -100,7 +99,6 @@ protected:
 	virtual void create_swapchain(const SwapchainConfig& swapConfig);
 	virtual void recreate_swapchain();
 	virtual void destroy_swapchain();
-	virtual void create_framebuffers();
 	virtual void create_command_pools();
 	virtual void create_sync_objects();
 	

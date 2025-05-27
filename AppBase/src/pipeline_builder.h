@@ -45,7 +45,7 @@ public:
 	PipelineBuilder& add_sample_mask(vk::SampleMask mask);
 	PipelineBuilder& set_alpha_to_coverage(bool enable);
 	PipelineBuilder& set_alpha_to_one(bool enable);
-	PipelineBuilder& set_render_pass(vk::RenderPass renderPass, uint32_t subpassIndex = 0);
+	PipelineBuilder& set_render_pass(vk::RenderPass renderPass, uint32_t subpassIndex);
 	PipelineBuilder& set_depth_test(bool enable);
 	PipelineBuilder& set_depth_write(bool enable);
 	PipelineBuilder& set_depth_compare_op(vk::CompareOp compareOp);
@@ -55,13 +55,15 @@ public:
 	PipelineBuilder& set_stencil_back(vk::StencilOpState back);
 	PipelineBuilder& set_min_depth_bounds(float minDepthBounds);
 	PipelineBuilder& set_max_depth_bounds(float maxDepthBounds);
+	
+	PipelineBuilder& add_color_blend_attachment(vk::PipelineColorBlendAttachmentState attachment);
 
 	vk::Pipeline build();
 
 	template<typename T>
 	PipelineBuilder& set_vertex_format()
 	{
-		static_assert(std::is_base_of_v<T<VertexFormat>, VertexFormat>, "Must inherit from VertexFormat CRTP");
+		static_assert(std::is_base_of_v<T, VertexFormat>, "Must inherit from VertexFormat CRTP");
 
 		state.vertexInput.add_binding_descriptions(T::get_binding_description());
 		state.vertexInput.add_attribute_description(T::get_attribute_description());

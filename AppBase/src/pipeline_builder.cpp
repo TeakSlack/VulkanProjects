@@ -107,6 +107,7 @@ PipelineBuilder& PipelineBuilder::set_dynamic_topology(bool enable)
 PipelineBuilder& PipelineBuilder::set_patch_control_points(uint32_t points)
 {
 	state.tessellationState.patchControlPoints = points;
+	return *this;
 }
 
 PipelineBuilder& PipelineBuilder::add_dynamic_state(vk::DynamicState dynamicState)
@@ -266,6 +267,7 @@ PipelineBuilder& PipelineBuilder::set_render_pass(vk::RenderPass renderPass, uin
 {
 	m_RenderPass = renderPass;
 	m_SubpassIndex = subpassIndex;
+	return *this;
 }
 
 PipelineBuilder& PipelineBuilder::set_depth_test(bool enable)
@@ -322,6 +324,12 @@ PipelineBuilder& PipelineBuilder::set_max_depth_bounds(float maxDepthBounds)
 	return *this;
 }
 
+PipelineBuilder& PipelineBuilder::add_color_blend_attachment(vk::PipelineColorBlendAttachmentState attachment)
+{
+	state.colorBlendState.attachments.push_back(attachment);
+	return *this;
+}
+
 vk::Pipeline PipelineBuilder::build()
 {
 	// Shader stage: create shader stages
@@ -355,8 +363,6 @@ vk::Pipeline PipelineBuilder::build()
 	}
 
 	vk::PipelineTessellationStateCreateInfo tessellationInfo({}, state.tessellationState.patchControlPoints);
-
-	vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, state.dynamicStates);
 
 	if (state.viewportState.viewports.size() > m_MaxViewports)
 	{
@@ -402,10 +408,10 @@ vk::Pipeline PipelineBuilder::build()
 		state.rasterizationState.cullMode,
 		state.rasterizationState.frontFace,
 		state.rasterizationState.depthBias,
-		state.rasterizationState.lineWidth,
 		state.rasterizationState.depthBiasConstant,
 		state.rasterizationState.depthBiasClamp,
-		state.rasterizationState.depthBiasSlope
+		state.rasterizationState.depthBiasSlope,
+		state.rasterizationState.lineWidth
 	);
 
 	if (!(m_DeviceProperties.limits.framebufferColorSampleCounts & state.multisampleState.rasterizationSamples))
@@ -482,6 +488,17 @@ vk::Pipeline PipelineBuilder::build()
 		spdlog::error("Failed to create graphics pipeline: {}", vk::to_string(result.result));
 		throw std::runtime_error("Failed to create graphics pipeline.");
 	}
+
+	for (auto& stage : m_ShaderStages)
+	{
+		if (stage.module)
+		{
+			m_Device.destroyShaderModule(stage.module);
+			stage.module = nullptr; // Clear the module after use
+		}
+	}
+
+	m_Device.destroyPipelineLayout(m_PipelineLayout);
 
 	return result.value;
 }
