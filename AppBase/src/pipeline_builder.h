@@ -26,7 +26,8 @@ public:
 	~PipelineBuilder();
 
 	// Add a shader stage from a SPIR-V file.
-	PipelineBuilder& add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits stage);
+	PipelineBuilder& add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits shaderStage);
+	PipelineBuilder& add_shader_stage(vk::ShaderModule shaderModule, vk::ShaderStageFlagBits shaderStage);
 
 	// Set input assembly and primitive topology.
 	PipelineBuilder& set_primitive_topology(vk::PrimitiveTopology topology);
@@ -210,24 +211,26 @@ public:
 			std::vector<vk::PushConstantRange> pushConstantRanges;
 		} pipelineLayout;
 	} state;
-
 	
-
 private:
-	struct Shader
+	struct ShaderInfo
 	{
-		size_t shaderSize;
 		std::vector<char> shaderCode;
-		vk::ShaderStageFlagBits type;
+		vk::ShaderStageFlagBits shaderStage;
+	};
+
+	struct ShaderModule
+	{
+		vk::ShaderModule shaderModule;
+		vk::ShaderStageFlagBits shaderStage;
 	};
 
 	PipelineType m_PipelineType;
 	vk::RenderPass m_RenderPass;
 	uint32_t m_SubpassIndex = 0;
 
-	std::vector<Shader> m_ShaderInfo;
-	std::vector<vk::ShaderModule> m_ShaderModules;
-	
+	std::vector<ShaderInfo> m_ShaderInfo;
+	std::vector<ShaderModule> m_ShaderModules;
 private:
 	// Helper to enable/disable a dynamic state.
 	void toggle_dynamic_state(bool enable, vk::DynamicState dynamicState);

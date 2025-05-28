@@ -13,11 +13,11 @@ PipelineBuilder::PipelineBuilder(PipelineType pipelineType)
 
 PipelineBuilder::~PipelineBuilder()
 {
-	
+
 }
 
-// Add a shader stage from a SPIR-V file. Only one per stage type allowed.
-PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits stage)
+// Add a shader stage from a SPIR-V file.
+PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits shaderStage)
 {
 	std::ifstream file(shaderPath, std::ifstream::ate | std::ifstream::binary);
 	if (!file.is_open())
@@ -32,9 +32,17 @@ PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath
 	file.read(shaderCode.data(), fileSize);
 	file.close();
 
-	Shader shader = { .shaderSize = shaderCode.size(), .shaderCode = std::move(shaderCode), .type = stage};
+	ShaderInfo shader = { .shaderCode = std::move(shaderCode), .shaderStage = shaderStage};
 	m_ShaderInfo.push_back(shader);
 
+	return *this;
+}
+
+// Add a shader stage from an existing shader module.
+PipelineBuilder& PipelineBuilder::add_shader_stage(vk::ShaderModule shaderModule, vk::ShaderStageFlagBits shaderStage)
+{
+	ShaderModule shader = { .shaderModule = shaderModule, .shaderStage = shaderStage };
+	m_ShaderModules.push_back(shader);
 	return *this;
 }
 
@@ -340,19 +348,22 @@ vk::UniquePipeline PipelineBuilder::build(vk::Device device)
 {
 	std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
 
-	for (auto stage : m_ShaderInfo)
+	for (auto shaderInfo : m_ShaderInfo)
 	{
 		vk::ShaderModuleCreateInfo stageModuleInfo(
 			{},
-			stage.shaderSize,
-			reinterpret_cast<const uint32_t*>(stage.shaderCode.data())
+			shaderInfo.shaderCode.size(),
+			reinterpret_cast<const uint32_t*>(shaderInfo.shaderCode.data())
 		);
 		vk::ShaderModule module = device.createShaderModule(stageModuleInfo);
-		m_ShaderModules.push_back(module);
+		m_ShaderModules.push_back({module, shaderInfo.shaderStage});
+	}
 
+	for (const auto& shaderModule : m_ShaderModules)
+	{
 		vk::PipelineShaderStageCreateInfo stageInfo{};
-		stageInfo.stage = stage.type;
-		stageInfo.module = module;
+		stageInfo.shaderStage = shaderModule.shaderStage;
+		stageInfo.module = shaderModule.shaderModule;
 		stageInfo.pName = "main";
 		shaderStages.push_back(stageInfo);
 	}
@@ -490,9 +501,9 @@ vk::UniquePipeline PipelineBuilder::build(vk::Device device)
 		pipeline = std::move(result.value);
 	}
 
-	for (auto& module : m_ShaderModules)
+	for (auto& shaderModule : m_ShaderModules)
 	{
-		device.destroyShaderModule(module);
+		device.destroyShaderModule(shaderModule.shaderModule);
 	}
 
 	device.destroyPipelineLayout(pipelineLayout);
