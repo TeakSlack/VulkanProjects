@@ -2,349 +2,361 @@
 #include <fstream>
 
 #include <spdlog/spdlog.h>
-
 #include "pipeline_builder.h"
 
-// Constructor for PipelineBuilder.
-// Ensures the provided Vulkan device is valid and stores it for later pipeline/shader creation.
-PipelineBuilder::PipelineBuilder(vk::PhysicalDevice physicalDevice, vk::Device device)
-	: m_PhysicalDevice(physicalDevice), m_Device(device)
+// Constructor: initializes device, physical device, and queries device properties/features.
+PipelineBuilder::PipelineBuilder(PipelineType pipelineType)
+	: m_PipelineType(pipelineType)
 {
-	assert(physicalDevice && "vk::PhysicalDevice has not been initialized!");
-	assert(device && "vk::Device has not been initialized!");
-
-	m_DeviceProperties = m_PhysicalDevice.getProperties();
-	m_DeviceFeatures = m_PhysicalDevice.getFeatures();
-
-	m_MaxViewports = m_DeviceProperties.limits.maxViewports;
+	
 }
 
-// Destructor for PipelineBuilder.
 PipelineBuilder::~PipelineBuilder()
 {
-	for (auto& shaderModule : m_ShaderStages)
-	{
-		if (shaderModule.module)
-		{
-			m_Device.destroyShaderModule(shaderModule.module);
-		}
-	}
+	
 }
 
-// Adds a shader stage to the pipeline by loading a SPIR-V shader from file.
-// shaderPath: Path to the SPIR-V binary file.
-// stage: Enum value indicating the shader stage (e.g., vertex, fragment).
-// Returns a reference to this builder for method chaining.
+// Add a shader stage from a SPIR-V file. Only one per stage type allowed.
 PipelineBuilder& PipelineBuilder::add_shader_stage(const std::string& shaderPath, vk::ShaderStageFlagBits stage)
 {
-	// Check if a shader of this stage type already exists
-	auto it = std::find_if(
-		m_ShaderStages.begin(),
-		m_ShaderStages.end(),
-		[stage](const ShaderStage& s) { return s.type == stage; }
-	);
-
-	if (it != m_ShaderStages.end())
-	{
-		spdlog::error("A shader for this stage already exists in the pipeline (stage: {}).", static_cast<int>(stage));
-		throw std::runtime_error("Duplicate shader stage in pipeline.");
-	}
-
-	// Open the shader file in binary mode, reading from the end to get the file size.
 	std::ifstream file(shaderPath, std::ifstream::ate | std::ifstream::binary);
-
 	if (!file.is_open())
 	{
 		spdlog::error("Failed to open file " + shaderPath);
 		exit(EXIT_FAILURE);
 	}
 
-	// Read the entire file into a buffer.
 	size_t fileSize = file.tellg();
 	std::vector<char> shaderCode(fileSize);
-
 	file.seekg(0);
 	file.read(shaderCode.data(), fileSize);
 	file.close();
 
-	// Create a Vulkan shader module from the loaded SPIR-V code.
-	vk::ShaderModuleCreateInfo shaderModuleInfo({}, shaderCode.size(), reinterpret_cast<const uint32_t*>(shaderCode.data()));
-	vk::ShaderModule module = m_Device.createShaderModule(shaderModuleInfo);
+	Shader shader = { .shaderSize = shaderCode.size(), .shaderCode = std::move(shaderCode), .type = stage};
+	m_ShaderInfo.push_back(shader);
 
-	// Store the shader module and its stage for later pipeline creation.
-	ShaderStage shaderStage =
-	{
-		.module = module,
-		.type = stage
-	};
-
-	m_ShaderStages.push_back(shaderStage);
-
-	// Return reference to this builder to allow chaining.
 	return *this;
 }
 
+// Set input assembly primitive topology.
 PipelineBuilder& PipelineBuilder::set_primitive_topology(vk::PrimitiveTopology topology)
 {
-	// Set the primitive topology for the input assembly state.
 	state.inputAssembly.topology = topology;
 	return *this;
 }
 
-PipelineBuilder& PipelineBuilder::set_primitive_restart(bool enable = true)
+// Enable/disable primitive restart.
+PipelineBuilder& PipelineBuilder::set_primitive_restart(bool enable)
 {
-	// Enable or disable primitive restart in the input assembly state.
 	state.inputAssembly.primitiveRestartEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Enable/disable dynamic primitive topology.
 PipelineBuilder& PipelineBuilder::set_dynamic_topology(bool enable)
 {
 	toggle_dynamic_state(enable, vk::DynamicState::ePrimitiveTopology);
 	return *this;
 }
 
+// Set number of patch control points for tessellation.
 PipelineBuilder& PipelineBuilder::set_patch_control_points(uint32_t points)
 {
 	state.tessellationState.patchControlPoints = points;
 	return *this;
 }
 
+// Add a dynamic state.
 PipelineBuilder& PipelineBuilder::add_dynamic_state(vk::DynamicState dynamicState)
 {
-	// Add a dynamic state to the pipeline.
 	state.dynamicStates.push_back(dynamicState);
 	return *this;
 }
 
+// Add a viewport.
 PipelineBuilder& PipelineBuilder::add_viewport(vk::Viewport viewport)
 {
-	// Add a viewport to the pipeline.
 	state.viewportState.viewports.push_back(viewport);
 	return *this;
 }
 
+// Add a viewport by parameters.
 PipelineBuilder& PipelineBuilder::add_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
-	// Create a viewport and add it to the pipeline.
 	vk::Viewport viewport(x, y, width, height, minDepth, maxDepth);
 	state.viewportState.viewports.push_back(viewport);
 	return *this;
 }
 
+// Add a scissor rectangle.
 PipelineBuilder& PipelineBuilder::add_scissor(vk::Rect2D scissor)
 {
-	// Add a scissor rectangle to the pipeline.
 	state.viewportState.scissors.push_back(scissor);
 	return *this;
 }
 
+// Add a scissor rectangle by parameters.
 PipelineBuilder& PipelineBuilder::add_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height)
 {
-	// Create a scissor rectangle and add it to the pipeline.
 	vk::Rect2D scissor({ x, y }, { width, height });
 	state.viewportState.scissors.push_back(scissor);
 	return *this;
 }
 
+// Enable/disable depth clamp.
 PipelineBuilder& PipelineBuilder::set_depth_clamp(bool enable)
 {
-	// Enable or disable depth clamping in the rasterization state.
 	state.rasterizationState.depthClamp = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Enable/disable rasterizer discard.
 PipelineBuilder& PipelineBuilder::set_rasterizer_discard(bool enable)
 {
-	// Enable or disable rasterizer discard in the rasterization state.
 	state.rasterizationState.rasterizerDiscard = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Set polygon mode.
 PipelineBuilder& PipelineBuilder::set_polygon_mode(vk::PolygonMode mode)
 {
-	// Set the polygon mode in the rasterization state.
 	state.rasterizationState.polygonMode = mode;
 	return *this;
 }
 
+// Set cull mode.
 PipelineBuilder& PipelineBuilder::set_cull_mode(vk::CullModeFlags mode)
 {
-	// Set the cull mode in the rasterization state.
 	state.rasterizationState.cullMode = mode;
 	return *this;
 }
 
+// Set front face winding order.
 PipelineBuilder& PipelineBuilder::set_front_face(vk::FrontFace face)
 {
-	// Set the front face in the rasterization state.
 	state.rasterizationState.frontFace = face;
 	return *this;
 }
 
+// Enable/disable depth bias.
 PipelineBuilder& PipelineBuilder::set_depth_bias(bool enable)
 {
-	// Enable or disable depth bias in the rasterization state.
 	state.rasterizationState.depthBias = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Set line width.
 PipelineBuilder& PipelineBuilder::set_line_width(float width)
 {
-	// Set the line width in the rasterization state.
 	state.rasterizationState.lineWidth = width;
 	return *this;
 }
 
+// Set depth bias constant.
 PipelineBuilder& PipelineBuilder::set_depth_bias_constant(float constant)
 {
-	// Set the depth bias constant in the rasterization state.
 	state.rasterizationState.depthBiasConstant = constant;
 	return *this;
 }
 
+// Set depth bias clamp.
 PipelineBuilder& PipelineBuilder::set_depth_bias_clamp(float clamp)
 {
-	// Set the depth bias clamp in the rasterization state.
 	state.rasterizationState.depthBiasClamp = clamp;
 	return *this;
 }
 
+// Set depth bias slope.
 PipelineBuilder& PipelineBuilder::set_depth_bias_slope(float slope)
 {
-	// Set the depth bias slope in the rasterization state.
 	state.rasterizationState.depthBiasSlope = slope;
 	return *this;
 }
 
+// Enable/disable dynamic line width.
 PipelineBuilder& PipelineBuilder::set_dynamic_line_width(bool enable)
 {
 	toggle_dynamic_state(enable, vk::DynamicState::eLineWidth);
 	return *this;
 }
 
+// Enable/disable dynamic depth bias.
 PipelineBuilder& PipelineBuilder::set_dynamic_depth_bias(bool enable)
 {
 	toggle_dynamic_state(enable, vk::DynamicState::eDepthBias);
 	return *this;
 }
 
-PipelineBuilder& PipelineBuilder::set_sample_count(vk::SampleCountFlagBits count) 
+// Set multisample count.
+PipelineBuilder& PipelineBuilder::set_sample_count(vk::SampleCountFlagBits count)
 {
 	state.multisampleState.rasterizationSamples = count;
 	return *this;
 }
 
+// Enable/disable sample shading and set min sample shading.
 PipelineBuilder& PipelineBuilder::set_sample_shading(bool enable, float minSampleShading)
 {
+	if (minSampleShading < 0.0f || minSampleShading > 1.0f)
+	{
+		spdlog::error("minSampleShading must be between 0.0 and 1.0.");
+		throw std::runtime_error("Invalid minSampleShading value.");
+	}
 	state.multisampleState.sampleShadingEnable = enable ? vk::True : vk::False;
 	state.multisampleState.minSampleShading = minSampleShading;
 	return *this;
 }
 
+// Add a sample mask.
 PipelineBuilder& PipelineBuilder::add_sample_mask(vk::SampleMask mask)
 {
-	// Add a sample mask to the multisample state.
 	state.multisampleState.sampleMasks.push_back(mask);
 	return *this;
 }
 
+// Enable/disable alpha-to-coverage.
 PipelineBuilder& PipelineBuilder::set_alpha_to_coverage(bool enable)
 {
-	// Enable or disable alpha-to-coverage in the multisample state.
 	state.multisampleState.alphaToCoverageEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Enable/disable alpha-to-one.
 PipelineBuilder& PipelineBuilder::set_alpha_to_one(bool enable)
 {
-	// Enable or disable alpha-to-one in the multisample state.
 	state.multisampleState.alphaToOneEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
-PipelineBuilder& PipelineBuilder::set_render_pass(vk::RenderPass renderPass, uint32_t subpassIndex = 0)
+// Set render pass and subpass index.
+PipelineBuilder& PipelineBuilder::set_render_pass(vk::RenderPass& renderPass, uint32_t subpassIndex)
 {
 	m_RenderPass = renderPass;
 	m_SubpassIndex = subpassIndex;
 	return *this;
 }
 
+// Enable/disable depth test.
 PipelineBuilder& PipelineBuilder::set_depth_test(bool enable)
 {
 	state.depthStencilState.depthTestEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Enable/disable depth write.
 PipelineBuilder& PipelineBuilder::set_depth_write(bool enable)
 {
 	state.depthStencilState.depthWriteEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Set depth compare operation.
 PipelineBuilder& PipelineBuilder::set_depth_compare_op(vk::CompareOp compareOp)
 {
 	state.depthStencilState.depthCompareOp = compareOp;
 	return *this;
 }
 
+// Enable/disable depth bounds test.
 PipelineBuilder& PipelineBuilder::set_depth_bounds_test(bool enable)
 {
 	state.depthStencilState.depthBoundsTestEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Enable/disable stencil test.
 PipelineBuilder& PipelineBuilder::set_stencil_test(bool enable)
 {
 	state.depthStencilState.stencilTestEnable = enable ? vk::True : vk::False;
 	return *this;
 }
 
+// Set stencil front state.
 PipelineBuilder& PipelineBuilder::set_stencil_front(vk::StencilOpState front)
 {
 	state.depthStencilState.front = front;
 	return *this;
 }
 
+// Set stencil back state.
 PipelineBuilder& PipelineBuilder::set_stencil_back(vk::StencilOpState back)
 {
 	state.depthStencilState.back = back;
 	return *this;
 }
 
+// Set minimum depth bounds.
 PipelineBuilder& PipelineBuilder::set_min_depth_bounds(float minDepthBounds)
 {
 	state.depthStencilState.minDepthBounds = minDepthBounds;
 	return *this;
 }
 
+// Set maximum depth bounds.
 PipelineBuilder& PipelineBuilder::set_max_depth_bounds(float maxDepthBounds)
 {
 	state.depthStencilState.maxDepthBounds = maxDepthBounds;
 	return *this;
 }
 
-PipelineBuilder& PipelineBuilder::add_color_blend_attachment(vk::PipelineColorBlendAttachmentState attachment)
+// Enable/disable logic op and set logic op.
+PipelineBuilder& PipelineBuilder::set_logic_op(bool enable, vk::LogicOp logicOp)
+{
+	state.colorBlendState.logicOpEnable = enable ? vk::True : vk::False;
+	state.colorBlendState.logicOp = logicOp;
+	return *this;
+}
+
+// Add a color blend attachment.
+PipelineBuilder& PipelineBuilder::add_color_blend_attachment(vk::PipelineColorBlendAttachmentState& attachment)
 {
 	state.colorBlendState.attachments.push_back(attachment);
 	return *this;
 }
 
-vk::Pipeline PipelineBuilder::build()
+// Set blend constants.
+PipelineBuilder& PipelineBuilder::set_blend_constants(const std::array<float, 4>& constants)
 {
-	// Shader stage: create shader stages
+	state.colorBlendState.blendConstants = constants;
+	return *this;
+}
+
+// Add a descriptor set layout.
+PipelineBuilder& PipelineBuilder::add_descriptor_set_layout(vk::DescriptorSetLayout descriptorSetLayout)
+{
+	state.pipelineLayout.descriptorSetLayouts.push_back(descriptorSetLayout);
+	return *this;
+}
+
+// Add a push constant range.
+PipelineBuilder& PipelineBuilder::add_push_constant_range(vk::PushConstantRange pushConstantRange)
+{
+	state.pipelineLayout.pushConstantRanges.push_back(pushConstantRange);
+	return *this;
+}
+
+// Build and return the Vulkan graphics pipeline.
+vk::UniquePipeline PipelineBuilder::build(vk::Device device)
+{
 	std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
 
-	for (const auto& stage : m_ShaderStages)
+	for (auto stage : m_ShaderInfo)
 	{
+		vk::ShaderModuleCreateInfo stageModuleInfo(
+			{},
+			stage.shaderSize,
+			reinterpret_cast<const uint32_t*>(stage.shaderCode.data())
+		);
+		vk::ShaderModule module = device.createShaderModule(stageModuleInfo);
+		m_ShaderModules.push_back(module);
+
 		vk::PipelineShaderStageCreateInfo stageInfo{};
 		stageInfo.stage = stage.type;
-		stageInfo.module = stage.module;
+		stageInfo.module = module;
 		stageInfo.pName = "main";
 		shaderStages.push_back(stageInfo);
 	}
 
-	// Vertex input: define how Vulkan should interpret vertex input
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo(
 		{},
 		state.vertexInput.bindingDescriptions,
@@ -364,18 +376,6 @@ vk::Pipeline PipelineBuilder::build()
 
 	vk::PipelineTessellationStateCreateInfo tessellationInfo({}, state.tessellationState.patchControlPoints);
 
-	if (state.viewportState.viewports.size() > m_MaxViewports)
-	{
-		spdlog::error("Number of viewports exceeds the maximum limit.");
-		throw std::runtime_error("Too many viewports.");
-	}
-
-	if (state.viewportState.scissors.size() > m_MaxViewports)
-	{
-		spdlog::error("Number of scissors exceeds the maximum limit.");
-		throw std::runtime_error("Too many scissors.");
-	}
-
 	if (state.viewportState.viewports.size() != state.viewportState.scissors.size())
 	{
 		spdlog::error("Number of viewports and scissors do not match.");
@@ -388,18 +388,6 @@ vk::Pipeline PipelineBuilder::build()
 		state.viewportState.scissors
 	);
 
-	if (state.rasterizationState.lineWidth != 1.0f && !m_DeviceFeatures.wideLines)
-	{
-		spdlog::error("Wide lines requested, but not available.");
-		throw std::runtime_error("Wide lines not supported.");
-	}
-
-	if (state.rasterizationState.depthClamp && !m_DeviceFeatures.depthClamp)
-	{
-		spdlog::error("Depth clamp requested, but not available.");
-		throw std::runtime_error("Depth clamp not supported.");
-	}
-	
 	vk::PipelineRasterizationStateCreateInfo rasterizerInfo(
 		{},
 		state.rasterizationState.depthClamp,
@@ -414,20 +402,8 @@ vk::Pipeline PipelineBuilder::build()
 		state.rasterizationState.lineWidth
 	);
 
-	if (!(m_DeviceProperties.limits.framebufferColorSampleCounts & state.multisampleState.rasterizationSamples))
-	{
-		spdlog::error("Sample count not supported by device.");
-		throw std::runtime_error("Unsupported sample count.");
-	}
-
-	if (!m_DeviceFeatures.sampleRateShading && state.multisampleState.sampleShadingEnable)
-	{
-		spdlog::error("Sample shading requested, but not available.");
-		throw std::runtime_error("Sample shading not supported.");
-	}
-
 	vk::PipelineMultisampleStateCreateInfo multisamplingInfo(
-		{}, 
+		{},
 		state.multisampleState.rasterizationSamples,
 		state.multisampleState.sampleShadingEnable,
 		state.multisampleState.minSampleShading,
@@ -460,49 +436,77 @@ vk::Pipeline PipelineBuilder::build()
 	vk::PipelineDynamicStateCreateInfo dynamicStateInfo({}, state.dynamicStates);
 
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, state.pipelineLayout.descriptorSetLayouts, state.pipelineLayout.pushConstantRanges);
-	m_PipelineLayout = m_Device.createPipelineLayout(pipelineLayoutInfo);
+	vk::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
 
-	// TODO: implement base pipeline info functionality
-	vk::GraphicsPipelineCreateInfo pipelineInfo(
-		{},
-		shaderStages,
-		&vertexInputInfo,
-		&inputAssemblyInfo,
-		&tessellationInfo,
-		&viewportStateInfo,
-		&rasterizerInfo,
-		&multisamplingInfo,
-		&depthStencilInfo,
-		&colorBlendInfo,
-		&dynamicStateInfo,
-		m_PipelineLayout,
-		m_RenderPass,
-		m_SubpassIndex
+	vk::UniquePipeline pipeline;
+
+	if (m_PipelineType == PipelineType::Graphics)
+	{
+		// Create the graphics pipeline.
+		vk::GraphicsPipelineCreateInfo pipelineInfo(
+			{},
+			shaderStages,
+			&vertexInputInfo,
+			&inputAssemblyInfo,
+			&tessellationInfo,
+			&viewportStateInfo,
+			&rasterizerInfo,
+			&multisamplingInfo,
+			&depthStencilInfo,
+			&colorBlendInfo,
+			&dynamicStateInfo,
+			pipelineLayout,
+			m_RenderPass,
+			m_SubpassIndex
 		);
 
-	// TODO: implement pipeline cacheing
-	vk::ResultValue<vk::Pipeline> result = m_Device.createGraphicsPipeline(VK_NULL_HANDLE, pipelineInfo);
+		vk::ResultValue result = device.createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo);
 
-	if (result.result != vk::Result::eSuccess)
-	{
-		spdlog::error("Failed to create graphics pipeline: {}", vk::to_string(result.result));
-		throw std::runtime_error("Failed to create graphics pipeline.");
-	}
-
-	for (auto& stage : m_ShaderStages)
-	{
-		if (stage.module)
+		if (result.result != vk::Result::eSuccess)
 		{
-			m_Device.destroyShaderModule(stage.module);
-			stage.module = nullptr; // Clear the module after use
+			spdlog::error("Failed to create graphics pipeline: {}", vk::to_string(result.result));
+			throw std::runtime_error("Failed to create graphics pipeline.");
 		}
+
+		pipeline = std::move(result.value);
+	}
+	else if (m_PipelineType == PipelineType::Compute)
+	{
+		// Create the compute pipeline.
+		vk::ComputePipelineCreateInfo pipelineInfo(
+			{},
+			shaderStages[0], // Only one shader stage for compute
+			pipelineLayout
+		);
+
+		vk::ResultValue result = device.createComputePipelineUnique(VK_NULL_HANDLE, pipelineInfo);
+
+		if (result.result != vk::Result::eSuccess)
+		{
+			spdlog::error("Failed to create compute pipeline: {}", vk::to_string(result.result));
+			throw std::runtime_error("Failed to create compute pipeline.");
+		}
+
+		pipeline = std::move(result.value);
 	}
 
-	m_Device.destroyPipelineLayout(m_PipelineLayout);
+	for (auto& module : m_ShaderModules)
+	{
+		device.destroyShaderModule(module);
+	}
 
-	return result.value;
+	device.destroyPipelineLayout(pipelineLayout);
+
+	if (pipeline.get() == VK_NULL_HANDLE)
+	{
+		spdlog::error("Failed to create pipeline, returned null handle.");
+		throw std::runtime_error("Pipeline creation failed.");
+	}
+
+	return std::move(pipeline);
 }
 
+// Helper to add or remove a dynamic state.
 void PipelineBuilder::toggle_dynamic_state(bool enable, vk::DynamicState dynamicState)
 {
 	auto it = std::find(state.dynamicStates.begin(),
@@ -514,7 +518,6 @@ void PipelineBuilder::toggle_dynamic_state(bool enable, vk::DynamicState dynamic
 	{
 		state.dynamicStates.push_back(dynamicState);
 	}
-
 	else if (!enable && it != state.dynamicStates.end())
 	{
 		state.dynamicStates.erase(it);

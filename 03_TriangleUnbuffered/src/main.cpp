@@ -33,7 +33,7 @@ private:
 	vk::RenderPass m_RenderPass; // Render pass for the triangle rendering
 	std::vector<vk::Framebuffer> m_Framebuffers; // Framebuffers for each swapchain image
 	std::vector<vk::CommandBuffer> m_CommandBuffers; // Command buffers for recording draw commands
-	vk::Pipeline m_GraphicsPipeline; // Graphics pipeline for rendering the triangle
+	vk::UniquePipeline m_GraphicsPipeline; // Graphics pipeline for rendering the triangle
 
 	int16_t m_CurrentFrame = 0; // Current frame for rendering
 
@@ -52,7 +52,6 @@ private:
 		m_Device.waitIdle();
 
 		destroy_framebuffers();
-		m_Device.destroyPipeline(m_GraphicsPipeline);
 		m_Device.destroyRenderPass(m_RenderPass);
 
 		for (auto& commandBuffer : m_CommandBuffers)
@@ -136,7 +135,7 @@ private:
 		colorBlendAttachmentInfo.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 		colorBlendAttachmentInfo.blendEnable = vk::False;
 
-		PipelineBuilder pipelineBuilder(m_PhysicalDevice, m_Device);
+		PipelineBuilder pipelineBuilder(PipelineType::Graphics);
 
 		pipelineBuilder.add_shader_stage("src/shader/vert.spv", vk::ShaderStageFlagBits::eVertex)
 			.add_shader_stage("src/shader/frag.spv", vk::ShaderStageFlagBits::eFragment)
@@ -148,7 +147,7 @@ private:
 			.add_color_blend_attachment(colorBlendAttachmentInfo)
 			.set_render_pass(m_RenderPass, 0);
 
-		m_GraphicsPipeline = pipelineBuilder.build();
+		m_GraphicsPipeline = pipelineBuilder.build(m_Device);
 	}
 
 	void record_command_buffer(vk::CommandBuffer commandBuffer, uint32_t imageIdx)
@@ -162,7 +161,7 @@ private:
 		vk::RenderPassBeginInfo renderPassInfo(m_RenderPass, m_Framebuffers[imageIdx], renderArea, clearColor);
 
 		commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
-		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline);
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline.get());
 
 		vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(m_SwapExtent.width), static_cast<float>(m_SwapExtent.height), 0.0f, 1.0f);
 		commandBuffer.setViewport(0, viewport);
@@ -262,10 +261,10 @@ private:
 
 int main()
 {
+	TriangleBuffered app;
+
 	try
 	{
-		TriangleBuffered app;
-
 		app.run();
 	}
 	catch (std::exception& e)
