@@ -362,7 +362,7 @@ vk::UniquePipeline PipelineBuilder::build(vk::Device device)
 	for (const auto& shaderModule : m_ShaderModules)
 	{
 		vk::PipelineShaderStageCreateInfo stageInfo{};
-		stageInfo.shaderStage = shaderModule.shaderStage;
+		stageInfo.stage = shaderModule.shaderStage;
 		stageInfo.module = shaderModule.shaderModule;
 		stageInfo.pName = "main";
 		shaderStages.push_back(stageInfo);
